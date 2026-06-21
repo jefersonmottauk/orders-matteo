@@ -531,15 +531,10 @@ exports.handler = async (event) => {
 
         sheet.setCell(r, 1, name, { fontColor: color, border: ROW_BORDER });
         sheet.setCell(r, 2, qty, { bold: qty > 0, fontColor: color, align: { h: 'center' }, border: ROW_BORDER });
-        if (checkbox) sheet.setCell(r, 3, '\u2610', { fontSize: 13, align: { h: 'center' }, border: ROW_BORDER });
+        if (checkbox) sheet.setCell(r, 3, '', { border: ROW_BORDER });
         r += 1;
       }
     }
-
-    r += 1;
-    sheet.setCell(r, 1, 'TOTAL', { bold: true, border: TOTAL_BORDER });
-    sheet.setCell(r, 2, grandTotal, { bold: true, fontColor: GREEN_COLOR, fontSize: 12, align: { h: 'center' }, border: TOTAL_BORDER });
-    if (checkbox) sheet.setCell(r, 3, '', { border: TOTAL_BORDER });
   }
 
   function buildMultiClientSheet(sheet, { includeAllProducts, title }) {
@@ -600,13 +595,6 @@ exports.handler = async (event) => {
         r += 1;
       }
     }
-
-    r += 1;
-    sheet.setCell(r, 1, 'TOTAL', { bold: true, border: TOTAL_BORDER });
-    colTotals.forEach((t, i) => {
-      sheet.setCell(r, 2 + i, t, { bold: true, fontColor: GREEN_COLOR, align: { h: 'center' }, border: TOTAL_BORDER });
-    });
-    sheet.setCell(r, lastCol, grandTotal, { bold: true, fontColor: GREEN_COLOR, fontSize: 12, align: { h: 'center' }, border: TOTAL_BORDER });
   }
 
   // Sheet 1: All Products (one column per client + TOTAL)
