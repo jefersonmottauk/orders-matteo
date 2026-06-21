@@ -418,8 +418,8 @@ class Sheet {
 
     const dim = `A1:${colLetter(Math.max(this.maxCol, 1))}${Math.max(this.maxRow, 1)}`;
     const paneXml = this.freezeRow
-      ? `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${this.freezeRow}" topLeftCell="A${this.freezeRow + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`
-      : '<sheetViews><sheetView workbookViewId="0"/></sheetViews>';
+      ? `<sheetViews><sheetView showGridLines="0" workbookViewId="0"><pane ySplit="${this.freezeRow}" topLeftCell="A${this.freezeRow + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`
+      : '<sheetViews><sheetView showGridLines="0" workbookViewId="0"/></sheetViews>';
 
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
