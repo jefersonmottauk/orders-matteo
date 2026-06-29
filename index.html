@@ -1123,7 +1123,7 @@ function renderProducts(){
 }
 function productCardHtml(p,locked){
   return `<div class="product-card">
-    <div class="emoji">${p.image_url?`<img src="${p.image_url}" style="width:56px;height:56px;object-fit:cover;border-radius:6px;display:block;margin:0 auto;" onerror="this.style.display='none';this.nextSibling.style.display='block'"/><span style="display:none">${p.emoji}</span>`:p.emoji}</div>
+    <div class="emoji">${p.image_url?`<img src="${p.image_url}" style="width:56px;height:56px;object-fit:cover;border-radius:6px;display:block;margin:0 auto;" onerror="this.style.display='none';this.nextSibling.style.display='block'"/><span style="display:none">${p.emoji}</span>`:''}</div>
     <div class="name">${p.name}</div>
     ${p.description?`<div class="pdesc">${p.description}</div>`:''}
     <div class="footer">
@@ -1207,7 +1207,7 @@ function renderCart(){
   }
   el.innerHTML=Object.entries(cart).map(([id,q])=>{
     const p=allProducts.find(x=>x.id==id);
-    const name=p?`${p.emoji} ${p.name}${p.description?` <span style="color:var(--text-tertiary);font-size:11px">(${p.description})</span>`:''}`:`#${id}`;
+    const name=p?`${p.name}${p.description?` <span style="color:var(--text-tertiary);font-size:11px">(${p.description})</span>`:''}`:`#${id}`;
     return `<div class="cart-item">
       <span class="cart-item-name">${name}</span>
       <div class="qty-ctrl">
@@ -1254,7 +1254,7 @@ async function submitOrder(){
     // Build order summary for review
     const itemList=Object.entries(cart).map(([id,q])=>{
       const p=allProducts.find(x=>x.id==id);
-      return `• ${p?p.emoji:''} ${p?p.name:'#'+id}${p&&p.description?' ('+p.description+')':''}: ${q}`;
+      return `• ${p?p.name:'#'+id}${p&&p.description?' ('+p.description+')':''}: ${q}`;
     }).join('\n');
     const productCount=Object.keys(cart).length;
     const confirmed=confirm(
@@ -1397,7 +1397,7 @@ async function loadClientHistory(){
       const deliveryNotes=o.delivery_notes||{};
       const itemRows=Object.entries(o.items).map(([id,q])=>{
         const p=allProducts.find(x=>x.id==id);
-        const name=`${p?p.emoji:''} ${p?p.name:'#'+id}`;
+        const name=`${p?p.name:'#'+id}`;
         const origQty=original?parseInt(original[id]||0):null;
         const changed=origQty!==null&&origQty!==parseInt(q);
         const note=deliveryNotes[id]||'';
@@ -1425,7 +1425,7 @@ async function loadClientHistory(){
             const note=deliveryNotes[id]||'';
             removedRows+=`<div class="history-item" style="flex-direction:column;align-items:flex-start;gap:2px;">
               <div style="display:flex;align-items:center;width:100%;">
-                <span style="flex:1;text-decoration:line-through;color:#A0A0A0;">${p?p.emoji:''} ${p?p.name:'#'+id}</span>
+                <span style="flex:1;text-decoration:line-through;color:#A0A0A0;">${p?p.name:'#'+id}</span>
                 <span style="display:flex;align-items:center;gap:6px;"><span style="color:#DC2626;font-weight:600;">×0</span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#DC2626;flex-shrink:0;" title="Removed"></span></span>
               </div>
               ${note?`<div style="font-size:11px;color:#6B6B6B;padding-left:4px;font-style:italic;">📝 ${note}</div>`:''}
@@ -1560,7 +1560,7 @@ function renderOrdersList(){
     const itemRows=Object.entries(o.items).map(([id,q])=>{
       const p=allProducts.find(x=>x.id==id);
       return `<div class="order-item-row">
-        <span>${p?p.emoji:''} ${p?p.name:'#'+id}${p&&p.description?' ('+p.description+')':''}</span>
+        <span>${p?p.name:'#'+id}${p&&p.description?' ('+p.description+')':''}</span>
         <div style="display:flex;align-items:center;gap:6px">
           <input class="admin-qty-input" type="number" value="${q}" min="0" max="999"
             onchange="updateOrderItem('${o.id}',${id},this.value)" title="Edit quantity"/>
@@ -1576,7 +1576,7 @@ function renderOrdersList(){
     const addItemHtml=`<div class="add-item-row">
       <select id="add-prod-${o.id}" class="add-item-select">
         <option value="">+ Add product to this order...</option>
-        ${allProducts.map(p=>`<option value="${p.id}">${p.emoji} ${p.name}${p.description?' ('+p.description+')':''}</option>`).join('')}
+        ${allProducts.map(p=>`<option value="${p.id}">${p.name}${p.description?' ('+p.description+')':''}</option>`).join('')}
       </select>
       <input type="number" id="add-qty-${o.id}" class="admin-qty-input" placeholder="qty" min="1" max="999" value="1"/>
       <button class="btn-sm green" onclick="addItemToOrder('${o.id}')">Add</button>
@@ -1775,7 +1775,7 @@ async function loadCompletedOrders(){
       const itemRows=Object.entries(o.items).map(([id,q])=>{
         const p=allProducts.find(x=>x.id==id);
         return `<div class="order-item-row">
-          <span>${p?p.emoji:''} ${p?p.name:'#'+id}${p&&p.description?' ('+p.description+')':''}</span>
+          <span>${p?p.name:'#'+id}${p&&p.description?' ('+p.description+')':''}</span>
           <div class="qty-controls">
             <input class="admin-qty-input" type="number" value="${q}" min="0" max="999"
               onchange="updateIPItem('${o.id}',${id},this.value)"
@@ -1788,7 +1788,7 @@ async function loadCompletedOrders(){
       const addItemHtml=`<div class="add-item-row">
         <select id="ip-add-prod-${o.id}" class="add-item-select">
           <option value="">+ Add product to this order...</option>
-          ${allProducts.map(p=>`<option value="${p.id}">${p.emoji} ${p.name}${p.description?' ('+p.description+')':''}</option>`).join('')}
+          ${allProducts.map(p=>`<option value="${p.id}">${p.name}${p.description?' ('+p.description+')':''}</option>`).join('')}
         </select>
         <input type="number" id="ip-add-qty-${o.id}" class="admin-qty-input" placeholder="qty" min="1" max="999" value="1"/>
         <button class="btn-sm green" onclick="addIPItem('${o.id}')">Add</button>
@@ -2021,7 +2021,7 @@ function renderDeliveryEditor(order){
 
   function productRow(id,item,isAltered){
     const p=allProducts.find(x=>x.id==id)||{name:'Product #'+id,emoji:'📦',description:''};
-    const img=p.image_url?`<img src="${p.image_url}" style="width:24px;height:24px;object-fit:cover;border-radius:4px;vertical-align:middle;"/>`:p.emoji;
+    const img=p.image_url?`<img src="${p.image_url}" style="width:24px;height:24px;object-fit:cover;border-radius:4px;vertical-align:middle;"/>`:'';
     if(isAltered){
       return `<div style="border:1px solid #FECACA;border-radius:var(--radius);padding:10px 12px;margin-bottom:8px;background:#FFF5F5;">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
@@ -2077,7 +2077,7 @@ function renderDeliveryEditor(order){
       <div style="display:flex;gap:8px;align-items:center;">
         <select id="delivery-add-prod" class="add-item-select" style="flex:1;border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:12px;background:var(--bg);color:var(--text);">
           <option value="">Select product...</option>
-          ${allProducts.map(p=>`<option value="${p.id}">${p.emoji} ${p.name}${p.description?' ('+p.description+')':''}</option>`).join('')}
+          ${allProducts.map(p=>`<option value="${p.id}">${p.name}${p.description?' ('+p.description+')':''}</option>`).join('')}
         </select>
         <input type="number" id="delivery-add-qty" placeholder="Qty" min="1" max="999" value="1" style="width:60px;border:1px solid var(--border);border-radius:4px;padding:6px;font-size:13px;text-align:center;background:var(--bg);"/>
         <button class="btn-sm green" onclick="addProductToDelivery()">Add</button>
@@ -2380,7 +2380,7 @@ function printDeliveryPDF(){
       const altered=item.qty!==item.origQty;
       const note=altered?(item.note||`Changed from ${item.origQty} to ${item.qty}`):'';
       itemSections+=`<tr>
-        <td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:13px;">${p.emoji?p.emoji+' ':''}${p.name}${p.description?' <span style="color:#888;font-size:11px;">('+p.description+')</span>':''}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:13px;">${p.name}${p.description?' <span style="color:#888;font-size:11px;">('+p.description+')</span>':''}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:13px;text-align:center;font-weight:700;${altered?'color:#F59E0B;':''}">${item.qty}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:12px;color:#666;font-style:italic;">${note}</td>
       </tr>`;
@@ -2394,7 +2394,7 @@ function printDeliveryPDF(){
     for(const [id,item] of removed){
       const p=allProducts.find(x=>x.id==id)||{name:'Product #'+id,emoji:'',description:''};
       itemSections+=`<tr>
-        <td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:13px;text-decoration:line-through;color:#aaa;">${p.emoji?p.emoji+' ':''}${p.name}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:13px;text-decoration:line-through;color:#aaa;">${p.name}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:13px;text-align:center;font-weight:700;color:#DC2626;">×0</td>
         <td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:12px;color:#DC2626;">${item.note||'Not available'}</td>
       </tr>`;
@@ -2485,7 +2485,7 @@ async function loadCompleteOrders(){
       const itemRows=Object.entries(o.items||{}).map(([id,q])=>{
         const p=allProducts.find(x=>x.id==id);
         return `<div class="order-item-row">
-          <span>${p?p.emoji:''} ${p?p.name:'#'+id}${p&&p.description?' ('+p.description+')':''}</span>
+          <span>${p?p.name:'#'+id}${p&&p.description?' ('+p.description+')':''}</span>
           <div class="qty-controls">
             <input class="admin-qty-input" type="number" value="${q}" min="0" max="999"
               onchange="updateCompleteItem('${o.id}',${id},this.value)"
@@ -2498,7 +2498,7 @@ async function loadCompleteOrders(){
       const addItemHtml=`<div class="add-item-row">
         <select id="zc-add-prod-${o.id}" class="add-item-select">
           <option value="">+ Add product to this order...</option>
-          ${allProducts.map(p=>`<option value="${p.id}">${p.emoji} ${p.name}${p.description?' ('+p.description+')':''}</option>`).join('')}
+          ${allProducts.map(p=>`<option value="${p.id}">${p.name}${p.description?' ('+p.description+')':''}</option>`).join('')}
         </select>
         <input type="number" id="zc-add-qty-${o.id}" class="admin-qty-input" placeholder="qty" min="1" max="999" value="1"/>
         <button class="btn-sm green" onclick="addCompleteItem('${o.id}')">Add</button>
@@ -2643,7 +2643,7 @@ async function loadTrash(){
       const deletedDate=new Date(o.deleted_at).toLocaleDateString('en-GB')+' '+new Date(o.deleted_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
       const itemRows=Object.entries(o.items).map(([id,q])=>{
         const p=allProducts.find(x=>x.id==id);
-        return `<div class="history-item"><span>${p?p.emoji:''} ${p?p.name:'#'+id}</span><span>×${q}</span></div>`;
+        return `<div class="history-item"><span>${p?p.name:'#'+id}</span><span>×${q}</span></div>`;
       }).join('');
       return `<div class="order-card refused" style="opacity:.85;">
         <div class="order-card-header" onclick="toggleBody('tb-${o.id}')">
@@ -2801,7 +2801,7 @@ async function saveUserPassword(){
 function productRow(p){
   const imgHtml=p.image_url
     ?'<img src="'+p.image_url+'" style="width:32px;height:32px;object-fit:cover;border-radius:4px;vertical-align:middle;" onerror="this.style.display=\'none\'"/>'
-    :p.emoji;
+    :'';
   const descHtml=p.description?'<div style="font-size:11px;color:var(--text-secondary)">'+p.description+'</div>':'';
   return `<div class="prod-row${p.active?'':' inactive-row'}">
     <span style="font-size:20px">${imgHtml}</span>
