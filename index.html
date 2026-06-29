@@ -96,7 +96,7 @@
   .product-card .name{font-size:13px;font-weight:500;line-height:1.3;}
   .product-card .pdesc{font-size:11px;color:var(--text-secondary);flex:1;}
   .product-card .footer{display:flex;align-items:center;gap:6px;margin-top:6px;}
-  .qty-input{width:64px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 6px;font-size:13px;text-align:center;background:var(--bg);color:var(--text);outline:none;}
+  .qty-input{width:72px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 4px;font-size:13px;text-align:center;background:var(--bg);color:var(--text);outline:none;}
   .qty-input:focus{border-color:var(--green);}
   .add-btn{background:var(--green);border:none;border-radius:var(--radius-sm);color:white;height:28px;padding:0 10px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;flex-shrink:0;}
   .add-btn:hover{background:var(--green-dark);}
@@ -585,29 +585,8 @@
       <img id="prod-img-preview-el" style="width:72px;height:72px;object-fit:cover;border-radius:var(--radius);border:1px solid var(--border);"/>
       <div style="margin-top:4px;"><button class="btn-sm red" onclick="clearProductImage()" style="font-size:11px;">✕ Remove image</button></div>
     </div>
-    <!-- Emoji OR image toggle -->
-    <div style="display:flex;gap:8px;margin-bottom:8px;">
-      <button class="btn-sm active" id="use-emoji-btn" onclick="switchToEmoji()" style="flex:1;border-color:var(--green);background:var(--green-light);color:var(--green-dark);">😀 Emoji</button>
-      <button class="btn-sm" id="use-image-btn" onclick="switchToImage()" style="flex:1;">📷 Photo</button>
-    </div>
-    <div id="emoji-field" class="field">
-      <label>Emoji</label>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <div id="emoji-preview" style="font-size:32px;width:48px;height:48px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;background:var(--bg);" onclick="toggleEmojiPicker()">📦</div>
-        <input type="text" id="prod-emoji" placeholder="📦" maxlength="4" style="flex:1;" oninput="document.getElementById('emoji-preview').textContent=this.value||'📦'"/>
-        <button class="btn-sm" onclick="toggleEmojiPicker()" type="button">😀 Pick</button>
-      </div>
-      <!-- EMOJI PICKER PANEL -->
-      <div id="emoji-picker" style="display:none;margin-top:8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);overflow:hidden;max-height:320px;display:none;flex-direction:column;">
-        <div style="padding:8px;">
-          <input type="text" id="emoji-search" placeholder="🔍 Search emojis..." oninput="filterEmojis(this.value)" style="width:100%;border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 10px;font-size:13px;background:var(--bg);outline:none;"/>
-        </div>
-        <div id="emoji-categories" style="display:flex;gap:4px;padding:0 8px 6px;flex-wrap:wrap;"></div>
-        <div id="emoji-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(36px,1fr));gap:2px;padding:4px 8px 8px;overflow-y:auto;max-height:220px;"></div>
-      </div>
-    </div>
-    <div id="image-field" class="field" style="display:none;">
-      <label>Upload photo</label>
+    <div class="field">
+      <label>Photo</label>
       <input type="file" id="prod-image-file" accept="image/*" onchange="previewProductImage(this)"/>
     </div>
     <div class="field"><label>Name</label><input type="text" id="prod-name" placeholder="Product name"/></div>
@@ -1243,7 +1222,7 @@ function productCardHtml(p,locked){
       :(!isAdmin&&p.out_of_stock)?`<button class="add-btn locked" disabled style="background:#FEE2E2;color:#991B1B;border:1px solid #FECACA;">🚫 Out of stock</button>`
       :`<div style="display:flex;align-items:center;gap:4px;">
           <button class="qty-btn" onclick="stepQty(${p.id},-1)" style="width:28px;height:28px;border:1px solid var(--border);border-radius:4px;background:var(--bg);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">−</button>
-          <input class="qty-input" type="number" id="qty-${p.id}" min="0" max="999" placeholder="Qty"
+          <input class="qty-input" type="number" id="qty-${p.id}" min="0" max="999" placeholder="0"
             style="width:46px;text-align:center;"
             oninput="syncQtyDisplay(${p.id})" onchange="syncQtyDisplay(${p.id})" />
           <button class="add-btn" onclick="stepQty(${p.id},1)">+</button>
@@ -3800,25 +3779,21 @@ function clearProductImage(){
 }
 
 function openAddProduct(){
-  editingProductId=null;useImageMode=false;currentImageUrl=null;
+  editingProductId=null;useImageMode=true;currentImageUrl=null;
   document.getElementById('product-modal-title').textContent='Add product';
-  document.getElementById('prod-emoji').value='📦';
-  document.getElementById('emoji-preview').textContent='📦';
   document.getElementById('prod-name').value='';
-  document.getElementById('prod-description').value='';document.getElementById('prod-cat').value='sauces';
+  document.getElementById('prod-description').value='';
+  document.getElementById('prod-cat').value='sauces';
   document.getElementById('add-product-error').style.display='none';
   document.getElementById('prod-image-preview').style.display='none';
   document.getElementById('prod-image-file').value='';
-  document.getElementById('emoji-picker').style.display='none';
-  emojiPickerOpen=false;
-  switchToEmoji();
   loadProductClientsChecklist(null);
   openModal('add-product-modal');setTimeout(()=>document.getElementById('prod-name').focus(),100);
 }
 async function openEditProduct(id){
   try{
     const rows=await sbGet('products',`id=eq.${id}`);if(!rows.length)return;const p=rows[0];
-    editingProductId=id;currentImageUrl=p.image_url||null;
+    editingProductId=id;currentImageUrl=p.image_url||null;useImageMode=true;
     document.getElementById('product-modal-title').textContent='Edit product';
     document.getElementById('prod-name').value=p.name;
     document.getElementById('prod-description').value=p.description||'';
@@ -3826,15 +3801,9 @@ async function openEditProduct(id){
     document.getElementById('add-product-error').style.display='none';
     document.getElementById('prod-image-file').value='';
     if(p.image_url){
-      switchToImage();
       document.getElementById('prod-img-preview-el').src=p.image_url;
       document.getElementById('prod-image-preview').style.display='block';
     } else {
-      switchToEmoji();
-      document.getElementById('prod-emoji').value=p.emoji||'📦';
-      document.getElementById('emoji-preview').textContent=p.emoji||'📦';
-      document.getElementById('emoji-picker').style.display='none';
-      emojiPickerOpen=false;
       document.getElementById('prod-image-preview').style.display='none';
     }
     await loadProductClientsChecklist(String(id));
@@ -3848,33 +3817,24 @@ async function saveProduct(){
   const err=document.getElementById('add-product-error');
   if(!name){err.textContent='Name is required.';err.style.display='block';return;}
 
-  let emoji='📦';
   let image_url=currentImageUrl||null;
-
-  // Handle image upload
-  if(useImageMode){
-    const fileInput=document.getElementById('prod-image-file');
-    const file=fileInput.files[0];
-    if(file){
-      try{
-        const ext=file.name.split('.').pop();
-        const filename=`product-${Date.now()}.${ext}`;
-        const {data,error}=await sbClient.storage.from('product-images').upload(filename,file,{upsert:true});
-        if(error)throw error;
-        const {data:urlData}=sbClient.storage.from('product-images').getPublicUrl(filename);
-        image_url=urlData.publicUrl;
-        emoji='🖼️'; // placeholder emoji when image is used
-      }catch(uploadErr){
-        err.textContent='Error uploading image: '+uploadErr.message;err.style.display='block';return;
-      }
+  const fileInput=document.getElementById('prod-image-file');
+  const file=fileInput.files[0];
+  if(file){
+    try{
+      const ext=file.name.split('.').pop();
+      const filename=`product-${Date.now()}.${ext}`;
+      const {data,error}=await sbClient.storage.from('product-images').upload(filename,file,{upsert:true});
+      if(error)throw error;
+      const {data:urlData}=sbClient.storage.from('product-images').getPublicUrl(filename);
+      image_url=urlData.publicUrl;
+    }catch(uploadErr){
+      err.textContent='Error uploading image: '+uploadErr.message;err.style.display='block';return;
     }
-  } else {
-    emoji=document.getElementById('prod-emoji').value.trim()||'📦';
-    image_url=null; // switching back to emoji clears image
   }
 
   try{
-    const payload={emoji,name,description,cat,image_url};
+    const payload={name,description,cat,image_url};
     let savedId=editingProductId;
     if(editingProductId){
       await sbPatch('products',`id=eq.${editingProductId}`,payload);
@@ -3926,34 +3886,42 @@ function toggleAllProductClients(checked){
 }
 
 async function saveProductClientVisibility(productId){
-  // For each user, add or remove this productId from their visible_products
-  const allChecked=_prodClientsCache.every(u=>document.getElementById('pclient-'+u.username)?.checked);
+  const allProductIds=allProducts.map(p=>String(p.id));
+
   for(const u of _prodClientsCache){
     const cb=document.getElementById('pclient-'+u.username);
     if(!cb)continue;
     const isChecked=cb.checked;
     const current=(u.visible_products||[]).map(String);
+    const hasRestrictions=current.length>0;
+
     let updated;
-    if(allChecked){
-      // All checked = no restriction — remove any product-level restriction for this product
-      updated=current.filter(id=>id!==productId);
-      if(updated.length===0)updated=null;
-    } else {
-      if(isChecked){
-        // Add product to user's visible list if not already there
-        if(!current.includes(productId))updated=[...current,productId];
-        else updated=current;
+    if(isChecked){
+      if(!hasRestrictions){
+        // User had no restrictions and product is checked — no change needed
+        updated=null;
       } else {
-        // Remove product from user's visible list
-        updated=current.filter(id=>id!==productId);
-        if(updated.length===0)updated=null;
+        // Add product to existing whitelist
+        updated=current.includes(productId)?current:[...current,productId];
+        if(updated.length===allProductIds.length) updated=null; // all products = no restriction
       }
+    } else {
+      // Product unchecked — need to build whitelist excluding this product
+      if(!hasRestrictions){
+        // Was unrestricted — whitelist = all products except this one
+        updated=allProductIds.filter(id=>id!==productId);
+      } else {
+        // Already had restrictions — just remove this product
+        updated=current.filter(id=>id!==productId);
+      }
+      if(updated.length===0) updated=null;
     }
-    // Only patch if changed
-    const before=JSON.stringify(u.visible_products||[]);
-    const after=JSON.stringify(updated||[]);
+
+    const before=JSON.stringify((u.visible_products||[]).map(String).sort());
+    const after=JSON.stringify((updated||[]).map(String).sort());
     if(before!==after){
       await sbPatch('users',`username=eq.${encodeURIComponent(u.username)}`,{visible_products:updated});
+      u.visible_products=updated; // update cache
     }
   }
 }
