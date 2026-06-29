@@ -96,7 +96,7 @@
   .product-card .name{font-size:13px;font-weight:500;line-height:1.3;}
   .product-card .pdesc{font-size:11px;color:var(--text-secondary);flex:1;}
   .product-card .footer{display:flex;align-items:center;gap:6px;margin-top:6px;}
-  .qty-input{width:52px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 6px;font-size:13px;text-align:center;background:var(--bg);color:var(--text);outline:none;}
+  .qty-input{width:64px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px 6px;font-size:13px;text-align:center;background:var(--bg);color:var(--text);outline:none;}
   .qty-input:focus{border-color:var(--green);}
   .add-btn{background:var(--green);border:none;border-radius:var(--radius-sm);color:white;height:28px;padding:0 10px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;flex-shrink:0;}
   .add-btn:hover{background:var(--green-dark);}
@@ -237,7 +237,17 @@
         </div>
       </div>
       <button class="btn-sm" id="cart-toggle-btn" onclick="showCartTab()">🛒 Cart (<span id="cart-count">0</span>)</button>
-      <button class="btn-sm" onclick="doLogout()">Sign out</button>
+      <div style="position:relative;display:inline-block;">
+        <button class="btn-sm" onclick="document.getElementById('client-menu-dropdown').classList.toggle('open')" style="background:var(--surface);">⚙ Menu</button>
+        <div id="client-menu-dropdown" class="notif-dropdown" style="right:0;min-width:160px;">
+          <div class="notif-item" onclick="openChangePasswordModal();document.getElementById('client-menu-dropdown').classList.remove('open')">
+            <div class="notif-item-title">🔑 Change Password</div>
+          </div>
+          <div class="notif-item" onclick="doLogout()">
+            <div class="notif-item-title" style="color:var(--red);">↩ Sign out</div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
   <div class="banner" id="banner"><div class="banner-dot"></div><span id="banner-msg"></span></div>
@@ -454,6 +464,28 @@
 </div>
 
 <!-- MODALS -->
+<div class="modal-overlay" id="change-password-modal">
+  <div class="modal" style="max-width:400px;width:95vw;">
+    <h3>🔑 Change Password</h3>
+    <div class="field">
+      <label>Current Password</label>
+      <input type="password" id="cp-current" placeholder="Enter current password" style="width:100%;"/>
+    </div>
+    <div class="field">
+      <label>New Password</label>
+      <input type="password" id="cp-new" placeholder="Enter new password" style="width:100%;"/>
+    </div>
+    <div class="field">
+      <label>Confirm New Password</label>
+      <input type="password" id="cp-confirm" placeholder="Repeat new password" style="width:100%;"/>
+    </div>
+    <div id="cp-error" style="display:none;color:var(--red);font-size:13px;margin-bottom:8px;"></div>
+    <div class="modal-btns">
+      <button onclick="closeModal('change-password-modal')">Cancel</button>
+      <button class="green" onclick="submitChangePassword()">Save Password</button>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="cutoff-modal">
   <div class="modal" style="max-width:500px;width:95vw;">
     <h3>⏰ Cut-off Settings</h3>
@@ -523,6 +555,16 @@
         <span style="font-size:11px;color:var(--text-tertiary);">Leave all unchecked = show all</span>
       </label>
       <div id="edit-user-cats" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px;"></div>
+    </div>
+    <div class="field">
+      <label style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px;">
+        <span>Visible products <span style="font-weight:400;color:var(--text-tertiary);font-size:11px;">(leave all unchecked = show all)</span></span>
+        <div style="display:flex;gap:6px;">
+          <button class="btn-sm" onclick="toggleAllUserProducts(true)" style="font-size:11px;padding:2px 8px;">All</button>
+          <button class="btn-sm" onclick="toggleAllUserProducts(false)" style="font-size:11px;padding:2px 8px;">None</button>
+        </div>
+      </label>
+      <div id="edit-user-products" style="margin-top:10px;max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;"></div>
     </div>
     <div class="modal-error" id="edit-user-error"></div>
     <div class="modal-btns">
@@ -773,6 +815,46 @@ async function doLogin(){
   btn.disabled=false;btn.textContent='Sign in';
 }
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('auth-screen').style.display!=='none')doLogin();});
+function openChangePasswordModal(){
+  document.getElementById('cp-current').value='';
+  document.getElementById('cp-new').value='';
+  document.getElementById('cp-confirm').value='';
+  document.getElementById('cp-error').style.display='none';
+  openModal('change-password-modal');
+}
+
+async function submitChangePassword(){
+  const current=document.getElementById('cp-current').value.trim();
+  const newPw=document.getElementById('cp-new').value.trim();
+  const confirm=document.getElementById('cp-confirm').value.trim();
+  const err=document.getElementById('cp-error');
+
+  if(!current||!newPw||!confirm){
+    err.textContent='Please fill in all fields.';err.style.display='block';return;
+  }
+  if(newPw.length<4){
+    err.textContent='New password must be at least 4 characters.';err.style.display='block';return;
+  }
+  if(newPw!==confirm){
+    err.textContent='New passwords do not match.';err.style.display='block';return;
+  }
+
+  try{
+    // Verify current password matches stored password
+    const rows=await sbGet('users',`username=ilike.${encodeURIComponent(currentUser)}`);
+    if(!rows.length){err.textContent='User not found.';err.style.display='block';return;}
+    if(rows[0].password!==current){
+      err.textContent='Current password is incorrect.';err.style.display='block';return;
+    }
+    // Update password
+    await sbPatch('users',`username=ilike.${encodeURIComponent(currentUser)}`,{password:newPw});
+    closeModal('change-password-modal');
+    alert('✅ Password changed successfully!');
+  }catch(e){
+    err.textContent='Error: '+e.message;err.style.display='block';
+  }
+}
+
 async function doLogout(){
   await sbClient.auth.signOut();
   try{
@@ -805,19 +887,19 @@ async function launch(){
     sbGet('orders_history','status=eq.completed&deleted_at=is.null').then(r=>{const b=document.getElementById('delivery-badge');if(b&&r.length){b.style.display='inline';b.textContent=r.length;}}).catch(()=>{});
     setInterval(checkAdminPendingNotifications,30000);
   } else {
-    // Load user's visible categories restriction
+    // Load user's visible categories AND products restriction
     try{
       const userRows=await sbGet('users',`username=eq.${encodeURIComponent(currentUser)}`);
       const userCats=(userRows[0]&&userRows[0].visible_categories)||[];
       if(userCats.length>0){
-        // Filter CATEGORIES to only show visible ones (always keep 'all')
         const allowedIds=new Set(userCats);
-        // Override: filter products and categories for this user
         window._userVisibleCats=allowedIds;
       } else {
-        window._userVisibleCats=null; // null = show all
+        window._userVisibleCats=null;
       }
-    }catch(e){window._userVisibleCats=null;}
+      const userProds=(userRows[0]&&userRows[0].visible_products)||[];
+      window._userVisibleProducts=userProds.length>0?new Set(userProds.map(String)):null;
+    }catch(e){window._userVisibleCats=null;window._userVisibleProducts=null;}
     await loadExistingOrderIntoCart();
     renderCats();renderProducts();renderCart();
     await checkUnreadNotifications();
@@ -1036,6 +1118,10 @@ document.addEventListener('click',function(e){
   if(adminWrap&&!adminWrap.contains(e.target)){
     document.getElementById('admin-menu-dropdown')?.classList.remove('open');
   }
+  const clientMenu=document.getElementById('client-menu-dropdown');
+  if(clientMenu&&!clientMenu.closest('div')?.contains(e.target)){
+    clientMenu.classList.remove('open');
+  }
 });
 
 // ── CART PERSISTENCE (localStorage per user) ──
@@ -1084,10 +1170,15 @@ function filterCat(cat){activeCat=cat;renderCats();renderProducts();}
 function renderProducts(){
   const locked=!canAdd();
   const visibleCats=window._userVisibleCats;
+  const visibleProds=window._userVisibleProducts;
   let list=allProducts;
   // Filter by user's visible categories (client only)
   if(!isAdmin&&visibleCats){
     list=list.filter(p=>visibleCats.has(p.cat));
+  }
+  // Filter by user's visible products whitelist (client only)
+  if(!isAdmin&&visibleProds){
+    list=list.filter(p=>visibleProds.has(String(p.id)));
   }
   // Filter by active category tab
   if(activeCat!=='all')list=list.filter(p=>p.cat===activeCat);
@@ -2751,9 +2842,13 @@ function openEditUser(username,authUserId){
   document.getElementById('edit-user-label').textContent=`User: ${username}`;
   document.getElementById('edit-password').value='';
   document.getElementById('edit-user-error').style.display='none';
-  // Load user's current visible_categories from DB and render checkboxes
+  document.getElementById('edit-user-products').innerHTML='<div style="font-size:12px;color:var(--text-tertiary);">Loading...</div>';
   sbGet('users',`username=eq.${encodeURIComponent(username)}`).then(rows=>{
     const userCats=(rows[0]&&rows[0].visible_categories)||[];
+    const userProds=(rows[0]&&rows[0].visible_products)||[];
+    const userProdSet=new Set(userProds.map(String));
+
+    // Category checkboxes
     const cats=CATEGORIES.filter(c=>c.id!=='all');
     document.getElementById('edit-user-cats').innerHTML=cats.map(c=>{
       const checked=userCats.length===0||userCats.includes(c.id);
@@ -2762,6 +2857,28 @@ function openEditUser(username,authUserId){
         <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.label}</span>
       </label>`;
     }).join('');
+
+    // Product checkboxes grouped by category
+    const CAT_ORDER=['sauces','oven','desserts','small-packs','cheeses','cured-meat','vegg','frozen','dry','pastas','drinks','oils','packaging','chemical','office','backup'];
+    let html='';
+    for(const catId of CAT_ORDER){
+      const cat=CATEGORIES.find(c=>c.id===catId);
+      const prods=allProducts.filter(p=>p.cat===catId&&(p.active||p.active===null));
+      if(!prods.length)continue;
+      html+=`<div style="margin-bottom:10px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-secondary);margin-bottom:5px;padding:3px 0;border-bottom:1px solid var(--border-light);">${cat?cat.label:catId}</div>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;">
+        ${prods.map(p=>{
+          const checked=userProds.length===0||userProdSet.has(String(p.id));
+          return `<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:5px 8px;border:1px solid ${checked?'var(--green)':'var(--border)'};border-radius:var(--radius-sm);background:${checked?'var(--green-light)':'var(--bg)'};" id="prod-label-${p.id}">
+            <input type="checkbox" id="uprod-${p.id}" ${checked?'checked':''} onchange="updateProdLabel(${p.id},this.checked)" style="width:13px;height:13px;accent-color:var(--green);flex-shrink:0;"/>
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}${p.description?` <span style="color:var(--text-tertiary);font-size:10px;">(${p.description})</span>`:''}</span>
+          </label>`;
+        }).join('')}
+        </div>
+      </div>`;
+    }
+    document.getElementById('edit-user-products').innerHTML=html||'<div style="font-size:12px;color:var(--text-tertiary);">No products found.</div>';
   }).catch(()=>{});
   openModal('edit-user-modal');
 }
@@ -2772,18 +2889,38 @@ function updateCatLabel(catId,checked){
     label.style.borderColor=checked?'var(--green)':'var(--border)';
   }
 }
+function updateProdLabel(prodId,checked){
+  const label=document.getElementById('prod-label-'+prodId);
+  if(label){
+    label.style.background=checked?'var(--green-light)':'var(--bg)';
+    label.style.borderColor=checked?'var(--green)':'var(--border)';
+  }
+}
+function toggleAllUserProducts(checked){
+  allProducts.forEach(p=>{
+    const cb=document.getElementById('uprod-'+p.id);
+    if(cb){cb.checked=checked;updateProdLabel(p.id,checked);}
+  });
+}
 async function saveUserSettings(){
   const p=document.getElementById('edit-password').value.trim();
   const err=document.getElementById('edit-user-error');
   err.style.display='none';
+
   // Get selected categories
   const cats=CATEGORIES.filter(c=>c.id!=='all');
-  const allChecked=cats.every(c=>document.getElementById('ucat-'+c.id)?.checked);
-  const selectedCats=allChecked?[]:cats.filter(c=>document.getElementById('ucat-'+c.id)?.checked).map(c=>c.id);
+  const allCatsChecked=cats.every(c=>document.getElementById('ucat-'+c.id)?.checked);
+  const selectedCats=allCatsChecked?[]:cats.filter(c=>document.getElementById('ucat-'+c.id)?.checked).map(c=>c.id);
+
+  // Get selected products
+  const allProdsChecked=allProducts.every(p=>document.getElementById('uprod-'+p.id)?.checked);
+  const selectedProds=allProdsChecked?[]:allProducts.filter(p=>document.getElementById('uprod-'+p.id)?.checked).map(p=>String(p.id));
+
   try{
-    // Save categories to users table
-    await sbPatch('users',`username=eq.${encodeURIComponent(editingUsername)}`,{visible_categories:selectedCats.length?selectedCats:null});
-    // Change password if provided
+    await sbPatch('users',`username=eq.${encodeURIComponent(editingUsername)}`,{
+      visible_categories:selectedCats.length?selectedCats:null,
+      visible_products:selectedProds.length?selectedProds:null
+    });
     if(p){
       if(!editingUserId){err.textContent='Missing user reference. Cannot update password.';err.style.display='block';return;}
       const res=await workerCall('/change-password',{username:editingUsername,auth_user_id:editingUserId,new_password:p});
