@@ -431,11 +431,14 @@
         <h2>✅ Complete</h2>
         <button class="btn-sm" onclick="loadCompleteOrders()">↻ Refresh</button>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;padding:0 0 12px;flex-wrap:wrap;">
-        <select id="complete-client-select" style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 10px;font-size:13px;background:var(--bg);min-width:200px;">
-          <option value="">— Select a client —</option>
-        </select>
-        <button class="btn-sm amber" onclick="exportClientHistoryExcel()">⬇ Excel (client history)</button>
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:0 0 12px;flex-wrap:wrap;">
+        <span style="font-size:12px;color:var(--text-secondary);padding-top:7px;">Clients:</span>
+        <div id="complete-client-checklist" style="display:flex;flex-wrap:wrap;gap:6px;max-width:600px;"></div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn-sm" onclick="toggleAllCompleteClients(true)">All</button>
+          <button class="btn-sm" onclick="toggleAllCompleteClients(false)">None</button>
+          <button class="btn-sm amber" onclick="exportClientHistoryExcel()">⬇ Excel (client history)</button>
+        </div>
       </div>
       <div id="complete-list"><div class="empty-state">Loading...</div></div>
     </div>
@@ -2879,14 +2882,18 @@ async function loadCompleteOrders(){
     const rows=await sbGet('orders_history','status=eq.delivered&deleted_at=is.null&order=created_at.desc');
     completeOrdersCache=rows;
     loadCompleteBadge(rows.length);
-    // Populate the client dropdown for the history Excel export
-    const clientSel=document.getElementById('complete-client-select');
-    if(clientSel){
-      const prevVal=clientSel.value;
+    // Populate the client checklist for the history Excel export (preserve current checks)
+    const checklistEl=document.getElementById('complete-client-checklist');
+    if(checklistEl){
+      const prevChecked=new Set([...checklistEl.querySelectorAll('input[type=checkbox]:checked')].map(c=>c.value));
       const uniqueUsers=[...new Set(rows.map(o=>o.username))].sort((a,b)=>a.localeCompare(b));
-      clientSel.innerHTML='<option value="">— Select a client —</option>'+
-        uniqueUsers.map(u=>`<option value="${u}">${u}</option>`).join('');
-      if(prevVal&&uniqueUsers.includes(prevVal))clientSel.value=prevVal;
+      checklistEl.innerHTML=uniqueUsers.map(u=>{
+        const checked=prevChecked.has(u);
+        return `<label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;padding:5px 9px;border:1px solid ${checked?'var(--green)':'var(--border)'};border-radius:var(--radius-sm);background:${checked?'var(--green-light)':'var(--bg)'};" id="cchist-label-${u}">
+          <input type="checkbox" value="${u}" ${checked?'checked':''} onchange="updateCompleteClientLabel('${u}',this.checked)" style="width:13px;height:13px;accent-color:var(--green);"/>
+          ${u}
+        </label>`;
+      }).join('');
     }
     if(!rows.length){el.innerHTML='<div class="empty-state">No completed deliveries yet.</div>';return;}
     el.innerHTML=rows.map(o=>{
@@ -2991,20 +2998,33 @@ async function loadCompleteBadge(count){
   badge.textContent=count;
 }
 
-// ── Client order history → Excel (sums all of a client's delivered orders) ──
+// ── Client order history → Excel (sums all of one or more clients' delivered orders) ──
+function updateCompleteClientLabel(username,checked){
+  const label=document.getElementById('cchist-label-'+username);
+  if(label){label.style.background=checked?'var(--green-light)':'var(--bg)';label.style.borderColor=checked?'var(--green)':'var(--border)';}
+}
+function toggleAllCompleteClients(checked){
+  document.querySelectorAll('#complete-client-checklist input[type=checkbox]').forEach(cb=>{
+    cb.checked=checked;
+    updateCompleteClientLabel(cb.value,checked);
+  });
+}
 async function exportClientHistoryExcel(){
-  const sel=document.getElementById('complete-client-select');
-  const username=sel?sel.value:'';
-  if(!username){alert('Select a client first.');return;}
+  const usernames=[...document.querySelectorAll('#complete-client-checklist input[type=checkbox]:checked')].map(c=>c.value);
+  if(!usernames.length){alert('Select at least one client first.');return;}
 
   const btn=event?.target;
   if(btn){btn.disabled=true;btn.textContent='⏳ Generating...';}
 
   try{
-    // Fetch the client's full delivered order history (oldest first), independent of
-    // whatever is currently filtered/loaded on screen.
-    const orders=await sbGet('orders_history',`username=ilike.${encodeURIComponent(username)}&status=eq.delivered&deleted_at=is.null&order=created_at.asc`);
-    if(!orders.length){alert(`No delivered order history found for ${username}.`);if(btn){btn.disabled=false;btn.textContent='⬇ Excel (client history)';}return;}
+    // Fetch each selected client's full delivered order history (oldest first), independent of
+    // whatever is currently filtered/loaded on screen. Done per-client (case-insensitive) to stay
+    // consistent with the rest of the app rather than relying on an exact-match "in" filter.
+    const perClientResults=await Promise.all(usernames.map(u=>
+      sbGet('orders_history',`username=ilike.${encodeURIComponent(u)}&status=eq.delivered&deleted_at=is.null&order=created_at.asc`)
+    ));
+    const orders=perClientResults.flat();
+    if(!orders.length){alert(`No delivered order history found for the selected client(s).`);if(btn){btn.disabled=false;btn.textContent='⬇ Excel (client history)';}return;}
 
     const payload={
       orders:orders.map(o=>({
@@ -3040,7 +3060,8 @@ async function exportClientHistoryExcel(){
     const blob=await res.blob();
     const url=URL.createObjectURL(blob);
     const date=new Date().toLocaleDateString('en-GB').replace(/\//g,'-');
-    const filename=`${username} - Order History (${orders.length} orders) ${date}.xlsx`;
+    const clientsLabel=usernames.length===1?usernames[0]:`${usernames.length} clients`;
+    const filename=`${clientsLabel} - Order History (${orders.length} orders) ${date}.xlsx`;
     const a=document.createElement('a');
     a.href=url;a.download=filename;
     document.body.appendChild(a);a.click();
