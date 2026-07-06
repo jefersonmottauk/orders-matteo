@@ -1913,8 +1913,20 @@ async function loadCompletedOrders(){
   }catch(e){el.innerHTML='<div class="empty-state">Error loading completed orders.</div>';}
 }
 function loadCompletedBadge(count){
+  if(count===undefined){
+    sbGet('orders_history','status=eq.in_production&deleted_at=is.null&or=(admin_purged.eq.false,admin_purged.is.null)').then(rows=>{
+      const badge=document.getElementById('completed-badge');
+      if(rows.length>0){badge.style.display='inline';badge.textContent=rows.length;}
+      else{badge.style.display='none';}
+    }).catch(()=>{});
+    return;
+  }
+  const badge=document.getElementById('completed-badge');
+  if(count>0){badge.style.display='inline';badge.textContent=count;}
+  else{badge.style.display='none';}
+}
 
-// ── In Production drag-and-drop reorder ──
+// ── In Production reorder ──
 let _dragIPId=null;
 function moveIPOrder(orderId, direction){
   const idx=completedOrdersCache.findIndex(o=>o.id===orderId);
@@ -1975,18 +1987,6 @@ function renderIPList(){
       </div>
     </div>`;
   }).join('');
-}
-  if(count===undefined){
-    sbGet('orders_history','status=eq.in_production&deleted_at=is.null&or=(admin_purged.eq.false,admin_purged.is.null)').then(rows=>{
-      const badge=document.getElementById('completed-badge');
-      if(rows.length>0){badge.style.display='inline';badge.textContent=rows.length;}
-      else{badge.style.display='none';}
-    }).catch(()=>{});
-    return;
-  }
-  const badge=document.getElementById('completed-badge');
-  if(count>0){badge.style.display='inline';badge.textContent=count;}
-  else{badge.style.display='none';}
 }
 async function completeOrder(id){
   try{
