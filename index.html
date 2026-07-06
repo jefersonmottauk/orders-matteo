@@ -1666,7 +1666,7 @@ function renderOrdersList(){
   if(!list.length){el.innerHTML='<div class="empty-state">No orders found.</div>';return;}
   el.innerHTML=list.map(o=>{
     const count=Object.values(o.items).reduce((a,b)=>a+b,0);
-    const statusHtml=`<span class="order-status status-${o.status}">${o.status==='pending'?'⏳ Pending':'❌ Refused'}</span>`;
+    const statusHtml=`<span class="order-status status-${o.status==='accepted'?'warning':o.status}">${o.status==='pending'?'⏳ Pending':o.status==='accepted'?'✅ Accepted':'❌ Refused'}</span>`;
     const itemRows=Object.entries(o.items).map(([id,q])=>{
       const p=allProducts.find(x=>x.id==id);
       return `<div class="order-item-row">
