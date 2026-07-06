@@ -431,6 +431,12 @@
         <h2>✅ Complete</h2>
         <button class="btn-sm" onclick="loadCompleteOrders()">↻ Refresh</button>
       </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:0 0 12px;flex-wrap:wrap;">
+        <select id="complete-client-select" style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 10px;font-size:13px;background:var(--bg);min-width:200px;">
+          <option value="">— Select a client —</option>
+        </select>
+        <button class="btn-sm amber" onclick="exportClientHistoryExcel()">⬇ Excel (client history)</button>
+      </div>
       <div id="complete-list"><div class="empty-state">Loading...</div></div>
     </div>
 
@@ -1048,13 +1054,30 @@ async function goToAdminOrder(orderId){
 }
 
 // ── CLIENT NOTIFICATIONS (admin accept/refuse messages) ──
+// ── Local notification dismissal fallback ──
+// (safety net in case a Supabase RLS policy silently blocks marking message_read/read
+// on orders that are no longer 'pending' — clearing still works from the user's point of view)
+function getDismissedNotifIds(){
+  try{
+    const raw=localStorage.getItem('matteo-dismissed-notifs-'+currentUser);
+    return raw?new Set(JSON.parse(raw)):new Set();
+  }catch(e){return new Set();}
+}
+function addDismissedNotifIds(ids){
+  try{
+    const s=getDismissedNotifIds();
+    ids.forEach(id=>s.add(String(id)));
+    localStorage.setItem('matteo-dismissed-notifs-'+currentUser,JSON.stringify([...s]));
+  }catch(e){}
+}
 let notifItems=[];
 async function checkUnreadNotifications(){
   document.getElementById('notif-bell-wrap').style.display='inline-block';
   try{
+    const dismissed=getDismissedNotifIds();
     // Order notifications (accepted/refused with message)
     const orderRows=await sbGet('orders_history',`username=eq.${encodeURIComponent(currentUser)}&or=(message_read.eq.false,message_read.is.null)&order=created_at.desc`);
-    const orderNotifs=orderRows.filter(r=>r.admin_message);
+    const orderNotifs=orderRows.filter(r=>r.admin_message&&!dismissed.has(String(r.id)));
     // Direct admin messages — case-insensitive username match
     let msgRows=[];
     try{
@@ -1064,7 +1087,7 @@ async function checkUnreadNotifications(){
       const r=await fetch(`${SUPABASE_URL}/rest/v1/admin_messages?username=ilike.${encodeURIComponent(currentUser)}&order=created_at.desc&apikey=${SUPABASE_KEY}`,{headers:{'apikey':SUPABASE_KEY,'Authorization':`Bearer ${SUPABASE_KEY}`}});
       if(r.ok)msgRows=await r.json();
     }
-    const unreadMsgs=msgRows.filter(m=>m.read===false||m.read===null||m.read==='false');
+    const unreadMsgs=msgRows.filter(m=>(m.read===false||m.read===null||m.read==='false')&&!dismissed.has(String(m.id)));
     notifItems=[...unreadMsgs.map(m=>({...m,_type:'message'})),...orderNotifs.map(o=>({...o,_type:'order'}))];
     // Update Messages tab badge
     const msgBadge=document.getElementById('client-msg-badge');
@@ -1106,6 +1129,7 @@ function renderNotifBell(){
 }
 
 async function clearAllNotifs(){
+  const ids=notifItems.map(n=>n.id);
   try{
     for(const n of notifItems){
       if(n._type==='message'){
@@ -1115,6 +1139,9 @@ async function clearAllNotifs(){
       }
     }
   }catch(e){}
+  // Local fallback: guarantees it won't reappear even if the DB write above was silently
+  // blocked (e.g. RLS only allows updating 'pending' orders, not refused/accepted ones)
+  addDismissedNotifIds(ids);
   notifItems=[];
   renderNotifBell();
   document.getElementById('notif-dropdown').classList.remove('open');
@@ -1151,11 +1178,13 @@ function goAdminMenu(tab){
 }
 async function markNotifRead(id){
   try{await sbPatch('orders_history',`id=eq.${id}`,{message_read:true});}catch(e){}
+  addDismissedNotifIds([id]);
   notifItems=notifItems.filter(o=>o.id!==id);
   renderNotifBell();
 }
 async function markMsgRead(id){
   try{await sbPatch('admin_messages',`id=eq.${id}`,{read:true,read_at:new Date().toISOString()});}catch(e){}
+  addDismissedNotifIds([id]);
   notifItems=notifItems.filter(o=>o.id!==id);
   renderNotifBell();
 }async function navigateToOrder(orderId,msgId){
@@ -2850,6 +2879,15 @@ async function loadCompleteOrders(){
     const rows=await sbGet('orders_history','status=eq.delivered&deleted_at=is.null&order=created_at.desc');
     completeOrdersCache=rows;
     loadCompleteBadge(rows.length);
+    // Populate the client dropdown for the history Excel export
+    const clientSel=document.getElementById('complete-client-select');
+    if(clientSel){
+      const prevVal=clientSel.value;
+      const uniqueUsers=[...new Set(rows.map(o=>o.username))].sort((a,b)=>a.localeCompare(b));
+      clientSel.innerHTML='<option value="">— Select a client —</option>'+
+        uniqueUsers.map(u=>`<option value="${u}">${u}</option>`).join('');
+      if(prevVal&&uniqueUsers.includes(prevVal))clientSel.value=prevVal;
+    }
     if(!rows.length){el.innerHTML='<div class="empty-state">No completed deliveries yet.</div>';return;}
     el.innerHTML=rows.map(o=>{
       const count=Object.values(o.items||{}).reduce((a,b)=>a+b,0);
@@ -2951,6 +2989,67 @@ async function loadCompleteBadge(count){
   }
   badge.style.display=count>0?'inline':'none';
   badge.textContent=count;
+}
+
+// ── Client order history → Excel (sums all of a client's delivered orders) ──
+async function exportClientHistoryExcel(){
+  const sel=document.getElementById('complete-client-select');
+  const username=sel?sel.value:'';
+  if(!username){alert('Select a client first.');return;}
+
+  const btn=event?.target;
+  if(btn){btn.disabled=true;btn.textContent='⏳ Generating...';}
+
+  try{
+    // Fetch the client's full delivered order history (oldest first), independent of
+    // whatever is currently filtered/loaded on screen.
+    const orders=await sbGet('orders_history',`username=ilike.${encodeURIComponent(username)}&status=eq.delivered&deleted_at=is.null&order=created_at.asc`);
+    if(!orders.length){alert(`No delivered order history found for ${username}.`);if(btn){btn.disabled=false;btn.textContent='⬇ Excel (client history)';}return;}
+
+    const payload={
+      orders:orders.map(o=>({
+        username:o.username,
+        items:o.items,
+        order_number:o.order_number,
+        status:o.status,
+        timestamp:o.timestamp,
+        ordered_by:o.ordered_by||''
+      })),
+      products:allProducts.map(p=>({id:p.id,name:p.name,description:p.description||'',cat:p.cat}))
+    };
+
+    const res=await fetch('/.netlify/functions/generate-excel',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
+    });
+
+    if(!res.ok){
+      const text=await res.text();
+      let msg='Server error '+res.status;
+      try{msg=JSON.parse(text).error||msg;}catch(e){msg=text||msg;}
+      throw new Error(msg);
+    }
+
+    const contentType=res.headers.get('content-type')||'';
+    if(!contentType.includes('spreadsheet')&&!contentType.includes('octet')){
+      const text=await res.text();
+      throw new Error('Unexpected response: '+text.substring(0,200));
+    }
+
+    const blob=await res.blob();
+    const url=URL.createObjectURL(blob);
+    const date=new Date().toLocaleDateString('en-GB').replace(/\//g,'-');
+    const filename=`${username} - Order History (${orders.length} orders) ${date}.xlsx`;
+    const a=document.createElement('a');
+    a.href=url;a.download=filename;
+    document.body.appendChild(a);a.click();
+    document.body.removeChild(a);URL.revokeObjectURL(url);
+  }catch(e){
+    alert('Error generating client history Excel: '+e.message);
+  }
+
+  if(btn){btn.disabled=false;btn.textContent='⬇ Excel (client history)';}
 }
 
 async function backToDelivery(id){
