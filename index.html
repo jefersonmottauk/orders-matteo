@@ -1909,91 +1909,27 @@ async function loadCompletedOrders(){
     completedOrdersCache=rows;
     const ipBadge=document.getElementById('inproduction-badge');
     if(ipBadge){if(rows.length>0){ipBadge.style.display='inline';ipBadge.textContent=rows.length;}else{ipBadge.style.display='none';}}
-    if(!rows.length){el.innerHTML='<div class="empty-state">No orders in production yet.</div>';return;}
-    el.innerHTML=rows.map(o=>{
-      const count=Object.values(o.items).reduce((a,b)=>a+b,0);
-      const itemRows=Object.entries(o.items).map(([id,q])=>{
-        const p=allProducts.find(x=>x.id==id);
-        return `<div class="order-item-row">
-          <span>${p?p.name:'#'+id}${p&&p.description?' ('+p.description+')':''}</span>
-          <div class="qty-controls">
-            <input class="admin-qty-input" type="number" value="${q}" min="0" max="999"
-              onchange="updateIPItem('${o.id}',${id},this.value)"
-              style="width:60px;text-align:center;border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px;font-size:13px;"/>
-            <span class="qty-label">qty</span>
-            <button onclick="removeIPItem('${o.id}',${id})" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:14px;padding:0 4px;" title="Remove">✕</button>
-          </div>
-        </div>`;
-      }).join('');
-      const addItemHtml=`<div class="add-item-row">
-        <select id="ip-add-prod-${o.id}" class="add-item-select">
-          <option value="">+ Add product to this order...</option>
-          ${allProducts.map(p=>`<option value="${p.id}">${p.name}${p.description?' ('+p.description+')':''}</option>`).join('')}
-        </select>
-        <input type="number" id="ip-add-qty-${o.id}" class="admin-qty-input" placeholder="qty" min="1" max="999" value="1"/>
-        <button class="btn-sm green" onclick="addIPItem('${o.id}')">Add</button>
-      </div>`;
-      return `<div class="order-card accepted" id="ipc-${o.id}" data-order-id="${o.id}"
-        ondragover="onIPDragOver(event)"
-        ondrop="onIPDrop(event,'${o.id}')"
-        ondragend="onIPDragEnd(event)">
-        <div class="order-card-header" onclick="toggleBody('cb-${o.id}')">
-          <input type="checkbox" id="cchk-${o.id}" onclick="event.stopPropagation()"/>
-          <span draggable="true"
-            ondragstart="event.stopPropagation();onIPDragStart(event,'${o.id}')"
-            onclick="event.stopPropagation()"
-            style="cursor:grab;color:var(--text-tertiary);font-size:18px;user-select:none;padding:0 6px;" title="Drag to reorder">⠿</span>
-          <span class="order-card-user">${o.order_number?`<span style="font-size:11px;background:#E5E7EB;border-radius:4px;padding:1px 6px;margin-right:4px;">#${o.order_number}</span>`:''} ${o.username}${o.ordered_by?` <span style="font-size:11px;background:var(--green-light);color:var(--green-dark);border-radius:4px;padding:1px 6px;margin-left:4px;">👤 ${o.ordered_by}</span>`:''} <span style="font-weight:400;color:var(--text-secondary);font-size:12px;">— ${o.timestamp}</span></span>
-          <span class="order-status status-accepted">🍳 In Production</span>
-          <span style="font-size:12px;color:var(--text-secondary)">${count} items</span>
-        </div>
-        <div class="order-card-body" id="cb-${o.id}">
-          ${itemRows}
-          ${addItemHtml}
-          <div class="order-actions">
-            <button class="btn-sm" onclick="reactivateOrder('${o.id}')">↩ Back to New Orders</button>
-            <button class="btn-sm" style="background:#EDE9FE;border-color:#A78BFA;color:#5B21B6;font-weight:600;" onclick="sendToDelivery('${o.id}')">🚚 Send to Delivery</button>
-            <button class="btn-sm" onclick="generateOrderPDF(completedOrdersCache.find(x=>x.id==='${o.id}'))" style="background:#F3F4F6;border-color:#D1D5DB;color:#374151;">🖨 PDF</button>
-          </div>
-        </div>
-      </div>`;
-    }).join('');
+    renderIPList();
   }catch(e){el.innerHTML='<div class="empty-state">Error loading completed orders.</div>';}
 }
 function loadCompletedBadge(count){
 
 // ── In Production drag-and-drop reorder ──
 let _dragIPId=null;
-function onIPDragStart(e,orderId){
-  _dragIPId=orderId;
-  e.dataTransfer.effectAllowed='move';
-  e.dataTransfer.setData('text/plain',orderId);
-  // Highlight the parent card
-  const card=document.getElementById('ipc-'+orderId);
-  if(card)setTimeout(()=>card.style.opacity='0.4',0);
+function moveIPOrder(orderId, direction){
+  const idx=completedOrdersCache.findIndex(o=>o.id===orderId);
+  if(idx===-1)return;
+  const newIdx=idx+direction;
+  if(newIdx<0||newIdx>=completedOrdersCache.length)return;
+  const [moved]=completedOrdersCache.splice(idx,1);
+  completedOrdersCache.splice(newIdx,0,moved);
+  renderIPList();
 }
-function onIPDragEnd(e){
-  // Restore all cards
-  document.querySelectorAll('#completed-list .order-card').forEach(r=>{r.style.opacity='';r.style.borderTop='';});
-}
-function onIPDragOver(e){
-  e.preventDefault();
-  e.dataTransfer.dropEffect='move';
-  document.querySelectorAll('#completed-list .order-card').forEach(r=>r.style.borderTop='');
-  e.currentTarget.style.borderTop='3px solid var(--green)';
-}
-function onIPDrop(e,targetId){
-  e.preventDefault();
-  document.querySelectorAll('#completed-list .order-card').forEach(r=>r.style.borderTop='');
-  if(_dragIPId===targetId)return;
-  const fromIdx=completedOrdersCache.findIndex(o=>o.id===_dragIPId);
-  const toIdx=completedOrdersCache.findIndex(o=>o.id===targetId);
-  if(fromIdx===-1||toIdx===-1)return;
-  const [moved]=completedOrdersCache.splice(fromIdx,1);
-  completedOrdersCache.splice(toIdx,0,moved);
-  // Re-render without refetching
+
+function renderIPList(){
   const el=document.getElementById('completed-list');
   const rows=completedOrdersCache;
+  if(!rows.length){el.innerHTML='<div class="empty-state">No orders in production yet.</div>';return;}
   el.innerHTML=rows.map(o=>{
     const count=Object.values(o.items).reduce((a,b)=>a+b,0);
     const itemRows=Object.entries(o.items).map(([id,q])=>{
@@ -2017,16 +1953,13 @@ function onIPDrop(e,targetId){
       <input type="number" id="ip-add-qty-${o.id}" class="admin-qty-input" placeholder="qty" min="1" max="999" value="1"/>
       <button class="btn-sm green" onclick="addIPItem('${o.id}')">Add</button>
     </div>`;
-    return `<div class="order-card accepted" id="ipc-${o.id}" data-order-id="${o.id}"
-      ondragover="onIPDragOver(event)"
-      ondrop="onIPDrop(event,'${o.id}')"
-      ondragend="onIPDragEnd(event)">
+    return `<div class="order-card accepted" id="ipc-${o.id}" data-order-id="${o.id}">
       <div class="order-card-header" onclick="toggleBody('cb-${o.id}')">
         <input type="checkbox" id="cchk-${o.id}" onclick="event.stopPropagation()"/>
-        <span draggable="true"
-          ondragstart="event.stopPropagation();onIPDragStart(event,'${o.id}')"
-          onclick="event.stopPropagation()"
-          style="cursor:grab;color:var(--text-tertiary);font-size:18px;user-select:none;padding:0 6px;" title="Drag to reorder">⠿</span>
+        <div style="display:flex;flex-direction:column;gap:0;" onclick="event.stopPropagation()">
+          <button onclick="moveIPOrder('${o.id}',-1)" style="border:none;background:none;cursor:pointer;color:var(--green-dark);font-size:12px;padding:0 4px;line-height:1.2;" title="Move up">▲</button>
+          <button onclick="moveIPOrder('${o.id}',1)" style="border:none;background:none;cursor:pointer;color:var(--green-dark);font-size:12px;padding:0 4px;line-height:1.2;" title="Move down">▼</button>
+        </div>
         <span class="order-card-user">${o.order_number?`<span style="font-size:11px;background:#E5E7EB;border-radius:4px;padding:1px 6px;margin-right:4px;">#${o.order_number}</span>`:''} ${o.username}${o.ordered_by?` <span style="font-size:11px;background:var(--green-light);color:var(--green-dark);border-radius:4px;padding:1px 6px;margin-left:4px;">👤 ${o.ordered_by}</span>`:''} <span style="font-weight:400;color:var(--text-secondary);font-size:12px;">— ${o.timestamp}</span></span>
         <span class="order-status status-accepted">🍳 In Production</span>
         <span style="font-size:12px;color:var(--text-secondary)">${count} items</span>
@@ -2194,71 +2127,37 @@ async function loadDeliveryOrders(){
       if(!rows.length){
         multiList.innerHTML='<div style="font-size:12px;color:var(--text-tertiary);">No orders in Delivery yet.</div>';
       } else {
-        multiList.innerHTML=rows.map(o=>`
-          <div id="drow-${o.id}" data-delivery-id="${o.id}"
-            ondragover="onDelivDragOver(event)"
-            ondrop="onDelivDrop(event,'${o.id}')"
-            ondragend="onDelivDragEnd(event)"
-            style="display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0;border-top:2px solid transparent;">
-            <span draggable="true"
-              ondragstart="event.stopPropagation();onDelivDragStart(event,'${o.id}')"
-              onclick="event.stopPropagation()"
-              style="cursor:grab;color:var(--text-tertiary);font-size:16px;user-select:none;padding:0 4px;" title="Drag to reorder">⠿</span>
-            <input type="checkbox" id="dchk-${o.id}" ${prevChecked.has(o.id)?'checked':''} style="width:15px;height:15px;cursor:pointer;accent-color:var(--green);"/>
-            ${o.order_number?`<span style="font-size:11px;background:#E5E7EB;border-radius:4px;padding:1px 6px;">#${o.order_number}</span>`:''}
-            <span style="font-weight:500;">${o.username}</span>
-            <span style="color:var(--text-tertiary);">— ${o.timestamp}</span>
-          </div>`).join('');
+        renderDelivList(prevChecked);
       }
     }
   }catch(e){console.error(e);}
 }
 
-// ── Delivery drag-and-drop reorder ──
-let _dragDelivId=null;
-function onDelivDragStart(e,orderId){
-  _dragDelivId=orderId;
-  e.dataTransfer.effectAllowed='move';
-  e.dataTransfer.setData('text/plain',orderId);
-  const row=document.getElementById('drow-'+orderId);
-  if(row)setTimeout(()=>row.style.opacity='0.4',0);
-}
-function onDelivDragEnd(e){
-  document.querySelectorAll('#delivery-multi-list [data-delivery-id]').forEach(r=>{r.style.opacity='';r.style.borderTop='2px solid transparent';});
-}
-function onDelivDragOver(e){
-  e.preventDefault();
-  e.dataTransfer.dropEffect='move';
-  document.querySelectorAll('#delivery-multi-list [data-delivery-id]').forEach(r=>r.style.borderTop='2px solid transparent');
-  e.currentTarget.style.borderTop='2px solid var(--green)';
-}
-function onDelivDrop(e,targetId){
-  e.preventDefault();
-  document.querySelectorAll('#delivery-multi-list [data-delivery-id]').forEach(r=>r.style.borderTop='2px solid transparent');
-  if(_dragDelivId===targetId)return;
-  const fromIdx=deliveryOrdersCache.findIndex(o=>o.id===_dragDelivId);
-  const toIdx=deliveryOrdersCache.findIndex(o=>o.id===targetId);
-  if(fromIdx===-1||toIdx===-1)return;
-  const [moved]=deliveryOrdersCache.splice(fromIdx,1);
-  deliveryOrdersCache.splice(toIdx,0,moved);
-  // Re-render checklist preserving checked state
-  const prevChecked=new Set([...document.querySelectorAll('#delivery-multi-list input[type=checkbox]:checked')].map(c=>c.id.replace('dchk-','')));
+function renderDelivList(preserveChecked){
+  const prevChecked=preserveChecked||new Set([...document.querySelectorAll('#delivery-multi-list input[type=checkbox]:checked')].map(c=>c.id.replace('dchk-','')));
   const multiList=document.getElementById('delivery-multi-list');
+  if(!multiList)return;
   multiList.innerHTML=deliveryOrdersCache.map(o=>`
-    <div id="drow-${o.id}" data-delivery-id="${o.id}"
-      ondragover="onDelivDragOver(event)"
-      ondrop="onDelivDrop(event,'${o.id}')"
-      ondragend="onDelivDragEnd(event)"
-      style="display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0;border-top:2px solid transparent;">
-      <span draggable="true"
-        ondragstart="event.stopPropagation();onDelivDragStart(event,'${o.id}')"
-        onclick="event.stopPropagation()"
-        style="cursor:grab;color:var(--text-tertiary);font-size:16px;user-select:none;padding:0 4px;" title="Drag to reorder">⠿</span>
+    <div id="drow-${o.id}" style="display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0;">
+      <div style="display:flex;flex-direction:column;gap:0;">
+        <button onclick="moveDelivOrder('${o.id}',-1)" style="border:none;background:none;cursor:pointer;color:var(--green-dark);font-size:11px;padding:0 4px;line-height:1.2;" title="Move up">▲</button>
+        <button onclick="moveDelivOrder('${o.id}',1)" style="border:none;background:none;cursor:pointer;color:var(--green-dark);font-size:11px;padding:0 4px;line-height:1.2;" title="Move down">▼</button>
+      </div>
       <input type="checkbox" id="dchk-${o.id}" ${prevChecked.has(o.id)?'checked':''} style="width:15px;height:15px;cursor:pointer;accent-color:var(--green);"/>
       ${o.order_number?`<span style="font-size:11px;background:#E5E7EB;border-radius:4px;padding:1px 6px;">#${o.order_number}</span>`:''}
       <span style="font-weight:500;">${o.username}</span>
       <span style="color:var(--text-tertiary);">— ${o.timestamp}</span>
     </div>`).join('');
+}
+
+function moveDelivOrder(orderId, direction){
+  const idx=deliveryOrdersCache.findIndex(o=>o.id===orderId);
+  if(idx===-1)return;
+  const newIdx=idx+direction;
+  if(newIdx<0||newIdx>=deliveryOrdersCache.length)return;
+  const [moved]=deliveryOrdersCache.splice(idx,1);
+  deliveryOrdersCache.splice(newIdx,0,moved);
+  renderDelivList();
 }
 
 async function refreshDeliveryData(){
@@ -3087,13 +2986,12 @@ async function loadUsers(){
     allUsersCache=rows.filter(u=>u.username!==ADMIN_USERNAME);
     const nonAdmin=rows.filter(u=>u.username!==ADMIN_USERNAME);
     el.innerHTML=`<div class="user-row header"><span>Username</span><span>Password</span><span>Change PW</span><span>Remove</span></div>`+
-      nonAdmin.map(u=>`<div class="user-row" draggable="true" data-user="${u.username}"
-        ondragstart="onUserDragStart(event,'${u.username}')"
-        ondragover="onUserDragOver(event)"
-        ondrop="onUserDrop(event,'${u.username}')"
-        ondragend="onUserDragEnd(event)">
-        <span style="display:flex;align-items:center;gap:8px;">
-          <span style="cursor:grab;color:var(--text-tertiary);font-size:16px;user-select:none;" title="Drag to reorder">⠿</span>
+      nonAdmin.map((u,i)=>`<div class="user-row" data-user="${u.username}">
+        <span style="display:flex;align-items:center;gap:6px;">
+          <div style="display:flex;flex-direction:column;gap:0;">
+            <button onclick="moveUser('${u.username}',-1)" style="border:none;background:none;cursor:pointer;color:var(--green-dark);font-size:11px;padding:0 3px;line-height:1.2;" title="Move up">▲</button>
+            <button onclick="moveUser('${u.username}',1)" style="border:none;background:none;cursor:pointer;color:var(--green-dark);font-size:11px;padding:0 3px;line-height:1.2;" title="Move down">▼</button>
+          </div>
           ${u.username}
         </span>
         <span style="font-family:monospace">${u.password}</span>
@@ -3103,36 +3001,18 @@ async function loadUsers(){
   }catch(e){el.innerHTML='<div style="padding:1rem;font-size:13px;color:var(--red)">Error loading users.</div>';}
 }
 
-let _dragUserId=null;
-function onUserDragStart(e,username){
-  _dragUserId=username;
-  e.dataTransfer.effectAllowed='move';
-  e.currentTarget.style.opacity='0.4';
-}
-function onUserDragEnd(e){
-  e.currentTarget.style.opacity='';
-  document.querySelectorAll('.user-row[data-user]').forEach(r=>r.style.borderTop='');
-}
-function onUserDragOver(e){
-  e.preventDefault();
-  e.dataTransfer.dropEffect='move';
-  e.currentTarget.style.borderTop='2px solid var(--green)';
-}
-async function onUserDrop(e,targetUsername){
-  e.preventDefault();
-  e.currentTarget.style.borderTop='';
-  if(_dragUserId===targetUsername)return;
-  const allRows=[...document.querySelectorAll('.user-row[data-user]')];
-  const usernames=allRows.map(r=>r.dataset.user);
-  const fromIdx=usernames.indexOf(_dragUserId);
-  const toIdx=usernames.indexOf(targetUsername);
-  if(fromIdx===-1||toIdx===-1)return;
-  usernames.splice(fromIdx,1);
-  usernames.splice(toIdx,0,_dragUserId);
+async function moveUser(username, direction){
+  const idx=allUsersCache.findIndex(u=>u.username===username);
+  if(idx===-1)return;
+  const newIdx=idx+direction;
+  if(newIdx<0||newIdx>=allUsersCache.length)return;
+  const [moved]=allUsersCache.splice(idx,1);
+  allUsersCache.splice(newIdx,0,moved);
+  // Save new sort_order
   try{
-    await Promise.all(usernames.map((u,i)=>sbPatch('users',`username=eq.${encodeURIComponent(u)}`,{sort_order:i})));
+    await Promise.all(allUsersCache.map((u,i)=>sbPatch('users',`username=eq.${encodeURIComponent(u.username)}`,{sort_order:i})));
     loadUsers();
-  }catch(err){console.error('Error saving user order:',err);}
+  }catch(e){console.error(e);}
 }
 async function deleteUser(username,authUserId){
   if(!confirm(`Remove user "${username}"?`))return;
