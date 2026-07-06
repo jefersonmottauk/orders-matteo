@@ -804,7 +804,8 @@ async function doLogin(){
   const err=document.getElementById('auth-error'),btn=document.getElementById('login-btn');
   err.style.display='none';btn.disabled=true;btn.textContent='Signing in...';
   try{
-    const email=u+EMAIL_DOMAIN;
+    const safeU=u.replace(/[^a-z0-9._-]/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'');
+    const email=safeU+EMAIL_DOMAIN;
     const {data,error}=await sbClient.auth.signInWithPassword({email,password:p});
     if(error||!data.session){
       err.textContent='Incorrect username or password.';err.style.display='block';
@@ -2972,8 +2973,10 @@ async function addUser(){
   if(!u||!p){err.textContent='Both fields are required.';err.style.display='block';return;}
   if(u===ADMIN_USERNAME){err.textContent='That username is reserved.';err.style.display='block';return;}
   err.style.display='none';
+  // Convert username to valid email for Supabase Auth using same domain as login
+  const safeEmail=u.replace(/[^a-z0-9._-]/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'')+EMAIL_DOMAIN;
   try{
-    const res=await workerCall('/create-user',{username:u,password:p});
+    const res=await workerCall('/create-user',{username:u,password:p,email:safeEmail});
     if(res.error){err.textContent='Error: '+res.error;err.style.display='block';return;}
     closeModal('add-user-modal');loadUsers();
   }catch(e){err.textContent='Error creating user: '+e.message;err.style.display='block';}
