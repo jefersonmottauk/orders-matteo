@@ -431,14 +431,21 @@
         <h2>✅ Complete</h2>
         <button class="btn-sm" onclick="loadCompleteOrders()">↻ Refresh</button>
       </div>
-      <div style="display:flex;align-items:flex-start;gap:10px;padding:0 0 12px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:0 0 10px;flex-wrap:wrap;">
         <span style="font-size:12px;color:var(--text-secondary);padding-top:7px;">Clients:</span>
         <div id="complete-client-checklist" style="display:flex;flex-wrap:wrap;gap:6px;max-width:600px;"></div>
         <div style="display:flex;gap:6px;">
           <button class="btn-sm" onclick="toggleAllCompleteClients(true)">All</button>
           <button class="btn-sm" onclick="toggleAllCompleteClients(false)">None</button>
-          <button class="btn-sm amber" onclick="exportClientHistoryExcel()">⬇ Excel (client history)</button>
         </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:0 0 12px;flex-wrap:wrap;">
+        <span style="font-size:12px;color:var(--text-secondary);">From:</span>
+        <input type="date" id="complete-hist-date-from" style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 8px;font-size:13px;background:var(--bg);"/>
+        <span style="font-size:12px;color:var(--text-secondary);">To:</span>
+        <input type="date" id="complete-hist-date-to" style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 8px;font-size:13px;background:var(--bg);"/>
+        <button class="btn-sm" onclick="document.getElementById('complete-hist-date-from').value='';document.getElementById('complete-hist-date-to').value='';" style="color:var(--text-secondary);">✕ Clear dates</button>
+        <button class="btn-sm amber" onclick="exportClientHistoryExcel()">⬇ Excel (client history)</button>
       </div>
       <div id="complete-list"><div class="empty-state">Loading...</div></div>
     </div>
@@ -3013,18 +3020,24 @@ async function exportClientHistoryExcel(){
   const usernames=[...document.querySelectorAll('#complete-client-checklist input[type=checkbox]:checked')].map(c=>c.value);
   if(!usernames.length){alert('Select at least one client first.');return;}
 
+  const fromVal=document.getElementById('complete-hist-date-from')?.value||'';
+  const toVal=document.getElementById('complete-hist-date-to')?.value||'';
+  let dateFilter='';
+  if(fromVal)dateFilter+=`&created_at=gte.${fromVal}T00:00:00`;
+  if(toVal)dateFilter+=`&created_at=lte.${toVal}T23:59:59.999`;
+
   const btn=event?.target;
   if(btn){btn.disabled=true;btn.textContent='⏳ Generating...';}
 
   try{
-    // Fetch each selected client's full delivered order history (oldest first), independent of
-    // whatever is currently filtered/loaded on screen. Done per-client (case-insensitive) to stay
-    // consistent with the rest of the app rather than relying on an exact-match "in" filter.
+    // Fetch each selected client's delivered order history (oldest first, optionally date-filtered),
+    // independent of whatever is currently filtered/loaded on screen. Done per-client (case-insensitive)
+    // to stay consistent with the rest of the app rather than relying on an exact-match "in" filter.
     const perClientResults=await Promise.all(usernames.map(u=>
-      sbGet('orders_history',`username=ilike.${encodeURIComponent(u)}&status=eq.delivered&deleted_at=is.null&order=created_at.asc`)
+      sbGet('orders_history',`username=ilike.${encodeURIComponent(u)}&status=eq.delivered&deleted_at=is.null${dateFilter}&order=created_at.asc`)
     ));
     const orders=perClientResults.flat();
-    if(!orders.length){alert(`No delivered order history found for the selected client(s).`);if(btn){btn.disabled=false;btn.textContent='⬇ Excel (client history)';}return;}
+    if(!orders.length){alert(`No delivered order history found for the selected client(s)${(fromVal||toVal)?' in that date range':''}.`);if(btn){btn.disabled=false;btn.textContent='⬇ Excel (client history)';}return;}
 
     const payload={
       orders:orders.map(o=>({
@@ -3061,7 +3074,8 @@ async function exportClientHistoryExcel(){
     const url=URL.createObjectURL(blob);
     const date=new Date().toLocaleDateString('en-GB').replace(/\//g,'-');
     const clientsLabel=usernames.length===1?usernames[0]:`${usernames.length} clients`;
-    const filename=`${clientsLabel} - Order History (${orders.length} orders) ${date}.xlsx`;
+    const rangeLabel=(fromVal||toVal)?` (${fromVal||'start'} to ${toVal||'now'})`:'';
+    const filename=`${clientsLabel} - Order History (${orders.length} orders)${rangeLabel} ${date}.xlsx`;
     const a=document.createElement('a');
     a.href=url;a.download=filename;
     document.body.appendChild(a);a.click();
