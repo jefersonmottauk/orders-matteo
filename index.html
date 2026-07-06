@@ -1969,8 +1969,8 @@ function renderIPList(){
       <div class="order-card-header" onclick="toggleBody('cb-${o.id}')">
         <input type="checkbox" id="cchk-${o.id}" onclick="event.stopPropagation()"/>
         <div style="display:flex;flex-direction:column;gap:0;" onclick="event.stopPropagation()">
-          <button onclick="moveIPOrder('${o.id}',-1)" style="border:none;background:none;cursor:pointer;color:var(--green-dark);font-size:12px;padding:0 4px;line-height:1.2;" title="Move up">▲</button>
-          <button onclick="moveIPOrder('${o.id}',1)" style="border:none;background:none;cursor:pointer;color:var(--green-dark);font-size:12px;padding:0 4px;line-height:1.2;" title="Move down">▼</button>
+          <button onclick="moveIPOrder('${o.id}',-1)" style="border:none;background:none;cursor:pointer;color:#9CA3AF;font-size:10px;padding:0 3px;line-height:1;opacity:.7;transition:opacity .15s;" title="Move up">⌃</button>
+          <button onclick="moveIPOrder('${o.id}',1)" style="border:none;background:none;cursor:pointer;color:#9CA3AF;font-size:10px;padding:0 3px;line-height:1;opacity:.7;transition:opacity .15s;" title="Move down">⌄</button>
         </div>
         <span class="order-card-user">${o.order_number?`<span style="font-size:11px;background:#E5E7EB;border-radius:4px;padding:1px 6px;margin-right:4px;">#${o.order_number}</span>`:''} ${o.username}${o.ordered_by?` <span style="font-size:11px;background:var(--green-light);color:var(--green-dark);border-radius:4px;padding:1px 6px;margin-left:4px;">👤 ${o.ordered_by}</span>`:''} <span style="font-weight:400;color:var(--text-secondary);font-size:12px;">— ${o.timestamp}</span></span>
         <span class="order-status status-accepted">🍳 In Production</span>
@@ -2140,8 +2140,8 @@ function renderDelivList(preserveChecked){
   multiList.innerHTML=deliveryOrdersCache.map(o=>`
     <div id="drow-${o.id}" style="display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0;">
       <div style="display:flex;flex-direction:column;gap:0;">
-        <button onclick="moveDelivOrder('${o.id}',-1)" style="border:none;background:none;cursor:pointer;color:var(--green-dark);font-size:11px;padding:0 4px;line-height:1.2;" title="Move up">▲</button>
-        <button onclick="moveDelivOrder('${o.id}',1)" style="border:none;background:none;cursor:pointer;color:var(--green-dark);font-size:11px;padding:0 4px;line-height:1.2;" title="Move down">▼</button>
+        <button onclick="moveDelivOrder('${o.id}',-1)" style="border:none;background:none;cursor:pointer;color:#9CA3AF;font-size:10px;padding:0 3px;line-height:1;opacity:.7;transition:opacity .15s;" title="Move up">⌃</button>
+        <button onclick="moveDelivOrder('${o.id}',1)" style="border:none;background:none;cursor:pointer;color:#9CA3AF;font-size:10px;padding:0 3px;line-height:1;opacity:.7;transition:opacity .15s;" title="Move down">⌄</button>
       </div>
       <input type="checkbox" id="dchk-${o.id}" ${prevChecked.has(o.id)?'checked':''} style="width:15px;height:15px;cursor:pointer;accent-color:var(--green);"/>
       ${o.order_number?`<span style="font-size:11px;background:#E5E7EB;border-radius:4px;padding:1px 6px;">#${o.order_number}</span>`:''}
@@ -2175,15 +2175,28 @@ async function refreshDeliveryData(){
           origQty:original?parseInt(original[id])||0:parseInt((o.items||{})[id])||0
         };
       });
-      // Also pick up any new items saved
       Object.entries(o.items||{}).forEach(([id,q])=>{
         if(!deliveryItems[id]) deliveryItems[id]={qty:parseInt(q)||0,note:notes[id]||'',origQty:original?parseInt(original[id])||0:parseInt(q)||0};
         else deliveryItems[id].qty=parseInt(q)||0;
       });
     }
   }
-  // Reload multi-order cache
-  await loadDeliveryOrders();
+  // Refresh each order's data in cache WITHOUT changing the order (preserves manual reordering)
+  if(deliveryOrdersCache.length>0){
+    const ids=deliveryOrdersCache.map(o=>o.id);
+    const freshRows=await sbGet('orders_history',`id=in.(${ids.join(',')})&deleted_at=is.null`);
+    const freshMap={};
+    freshRows.forEach(r=>freshMap[r.id]=r);
+    // Update each item in place, preserving the manually-sorted order
+    for(let i=0;i<deliveryOrdersCache.length;i++){
+      if(freshMap[deliveryOrdersCache[i].id]){
+        deliveryOrdersCache[i]=freshMap[deliveryOrdersCache[i].id];
+      }
+    }
+  } else {
+    // First load — fetch from Supabase
+    await loadDeliveryOrders();
+  }
 }
 
 async function printSelectedDeliveryPDFs(){
@@ -2989,8 +3002,8 @@ async function loadUsers(){
       nonAdmin.map((u,i)=>`<div class="user-row" data-user="${u.username}">
         <span style="display:flex;align-items:center;gap:6px;">
           <div style="display:flex;flex-direction:column;gap:0;">
-            <button onclick="moveUser('${u.username}',-1)" style="border:none;background:none;cursor:pointer;color:var(--green-dark);font-size:11px;padding:0 3px;line-height:1.2;" title="Move up">▲</button>
-            <button onclick="moveUser('${u.username}',1)" style="border:none;background:none;cursor:pointer;color:var(--green-dark);font-size:11px;padding:0 3px;line-height:1.2;" title="Move down">▼</button>
+            <button onclick="moveUser('${u.username}',-1)" style="border:none;background:none;cursor:pointer;color:#9CA3AF;font-size:10px;padding:0 3px;line-height:1;opacity:.7;transition:opacity .15s;" title="Move up">⌃</button>
+            <button onclick="moveUser('${u.username}',1)" style="border:none;background:none;cursor:pointer;color:#9CA3AF;font-size:10px;padding:0 3px;line-height:1;opacity:.7;transition:opacity .15s;" title="Move down">⌄</button>
           </div>
           ${u.username}
         </span>
