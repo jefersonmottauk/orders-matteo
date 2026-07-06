@@ -1933,9 +1933,14 @@ async function loadCompletedOrders(){
         <input type="number" id="ip-add-qty-${o.id}" class="admin-qty-input" placeholder="qty" min="1" max="999" value="1"/>
         <button class="btn-sm green" onclick="addIPItem('${o.id}')">Add</button>
       </div>`;
-      return `<div class="order-card accepted" id="ipc-${o.id}">
+      return `<div class="order-card accepted" id="ipc-${o.id}" draggable="true" data-order-id="${o.id}"
+        ondragstart="onIPDragStart(event,'${o.id}')"
+        ondragover="onIPDragOver(event)"
+        ondrop="onIPDrop(event,'${o.id}')"
+        ondragend="onIPDragEnd(event)">
         <div class="order-card-header" onclick="toggleBody('cb-${o.id}')">
           <input type="checkbox" id="cchk-${o.id}" onclick="event.stopPropagation()"/>
+          <span style="cursor:grab;color:var(--text-tertiary);font-size:18px;user-select:none;padding:0 4px;" title="Drag to reorder" ondragstart="event.stopPropagation()" onclick="event.stopPropagation()">⠿</span>
           <span class="order-card-user">${o.order_number?`<span style="font-size:11px;background:#E5E7EB;border-radius:4px;padding:1px 6px;margin-right:4px;">#${o.order_number}</span>`:''} ${o.username}${o.ordered_by?` <span style="font-size:11px;background:var(--green-light);color:var(--green-dark);border-radius:4px;padding:1px 6px;margin-left:4px;">👤 ${o.ordered_by}</span>`:''} <span style="font-weight:400;color:var(--text-secondary);font-size:12px;">— ${o.timestamp}</span></span>
           <span class="order-status status-accepted">🍳 In Production</span>
           <span style="font-size:12px;color:var(--text-secondary)">${count} items</span>
@@ -1954,6 +1959,83 @@ async function loadCompletedOrders(){
   }catch(e){el.innerHTML='<div class="empty-state">Error loading completed orders.</div>';}
 }
 function loadCompletedBadge(count){
+
+// ── In Production drag-and-drop reorder ──
+let _dragIPId=null;
+function onIPDragStart(e,orderId){
+  _dragIPId=orderId;
+  e.dataTransfer.effectAllowed='move';
+  setTimeout(()=>e.currentTarget.style.opacity='0.4',0);
+}
+function onIPDragEnd(e){
+  e.currentTarget.style.opacity='';
+  document.querySelectorAll('#completed-list .order-card').forEach(r=>{r.style.borderTop='';r.style.borderBottom='';});
+}
+function onIPDragOver(e){
+  e.preventDefault();
+  e.dataTransfer.dropEffect='move';
+  document.querySelectorAll('#completed-list .order-card').forEach(r=>r.style.borderTop='');
+  e.currentTarget.style.borderTop='3px solid var(--green)';
+}
+function onIPDrop(e,targetId){
+  e.preventDefault();
+  document.querySelectorAll('#completed-list .order-card').forEach(r=>r.style.borderTop='');
+  if(_dragIPId===targetId)return;
+  const fromIdx=completedOrdersCache.findIndex(o=>o.id===_dragIPId);
+  const toIdx=completedOrdersCache.findIndex(o=>o.id===targetId);
+  if(fromIdx===-1||toIdx===-1)return;
+  const [moved]=completedOrdersCache.splice(fromIdx,1);
+  completedOrdersCache.splice(toIdx,0,moved);
+  // Re-render without refetching
+  const el=document.getElementById('completed-list');
+  const rows=completedOrdersCache;
+  el.innerHTML=rows.map(o=>{
+    const count=Object.values(o.items).reduce((a,b)=>a+b,0);
+    const itemRows=Object.entries(o.items).map(([id,q])=>{
+      const p=allProducts.find(x=>x.id==id);
+      return `<div class="order-item-row">
+        <span>${p?p.name:'#'+id}${p&&p.description?' ('+p.description+')':''}</span>
+        <div class="qty-controls">
+          <input class="admin-qty-input" type="number" value="${q}" min="0" max="999"
+            onchange="updateIPItem('${o.id}',${id},this.value)"
+            style="width:60px;text-align:center;border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 6px;font-size:13px;"/>
+          <span class="qty-label">qty</span>
+          <button onclick="removeIPItem('${o.id}',${id})" style="border:none;background:none;color:var(--red);cursor:pointer;font-size:14px;padding:0 4px;" title="Remove">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+    const addItemHtml=`<div class="add-item-row">
+      <select id="ip-add-prod-${o.id}" class="add-item-select">
+        <option value="">+ Add product to this order...</option>
+        ${allProducts.map(p=>`<option value="${p.id}">${p.name}${p.description?' ('+p.description+')':''}</option>`).join('')}
+      </select>
+      <input type="number" id="ip-add-qty-${o.id}" class="admin-qty-input" placeholder="qty" min="1" max="999" value="1"/>
+      <button class="btn-sm green" onclick="addIPItem('${o.id}')">Add</button>
+    </div>`;
+    return `<div class="order-card accepted" id="ipc-${o.id}" draggable="true" data-order-id="${o.id}"
+      ondragstart="onIPDragStart(event,'${o.id}')"
+      ondragover="onIPDragOver(event)"
+      ondrop="onIPDrop(event,'${o.id}')"
+      ondragend="onIPDragEnd(event)">
+      <div class="order-card-header" onclick="toggleBody('cb-${o.id}')">
+        <input type="checkbox" id="cchk-${o.id}" onclick="event.stopPropagation()"/>
+        <span style="cursor:grab;color:var(--text-tertiary);font-size:18px;user-select:none;padding:0 4px;" title="Drag to reorder" onclick="event.stopPropagation()">⠿</span>
+        <span class="order-card-user">${o.order_number?`<span style="font-size:11px;background:#E5E7EB;border-radius:4px;padding:1px 6px;margin-right:4px;">#${o.order_number}</span>`:''} ${o.username}${o.ordered_by?` <span style="font-size:11px;background:var(--green-light);color:var(--green-dark);border-radius:4px;padding:1px 6px;margin-left:4px;">👤 ${o.ordered_by}</span>`:''} <span style="font-weight:400;color:var(--text-secondary);font-size:12px;">— ${o.timestamp}</span></span>
+        <span class="order-status status-accepted">🍳 In Production</span>
+        <span style="font-size:12px;color:var(--text-secondary)">${count} items</span>
+      </div>
+      <div class="order-card-body" id="cb-${o.id}">
+        ${itemRows}
+        ${addItemHtml}
+        <div class="order-actions">
+          <button class="btn-sm" onclick="reactivateOrder('${o.id}')">↩ Back to New Orders</button>
+          <button class="btn-sm" style="background:#EDE9FE;border-color:#A78BFA;color:#5B21B6;font-weight:600;" onclick="sendToDelivery('${o.id}')">🚚 Send to Delivery</button>
+          <button class="btn-sm" onclick="generateOrderPDF(completedOrdersCache.find(x=>x.id==='${o.id}'))" style="background:#F3F4F6;border-color:#D1D5DB;color:#374151;">🖨 PDF</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
   if(count===undefined){
     sbGet('orders_history','status=eq.in_production&deleted_at=is.null&or=(admin_purged.eq.false,admin_purged.is.null)').then(rows=>{
       const badge=document.getElementById('completed-badge');
