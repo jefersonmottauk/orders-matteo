@@ -408,6 +408,7 @@
         <h2>Products</h2>
         <button class="btn-sm green" onclick="openAddProduct()">+ Add product</button>
         <button class="btn-sm" onclick="openManageCategories()">⚙️ Categories</button>
+        <button class="btn-sm" style="background:#F3F4F6;border-color:#D1D5DB;color:#374151;" onclick="printProductListPDF()">🖨 PDF</button>
       </div>
       <div class="cat-row" id="admin-cat-row"></div>
       <div class="cat-row" id="admin-status-row"></div>
@@ -776,6 +777,23 @@ function saveCategories(cats){
   try{localStorage.setItem('matteo-categories',JSON.stringify(cats));}catch(e){}
 }
 let CATEGORIES=loadCategories();
+async function fetchCategoriesFromSupabase(){
+  try{
+    const rows=await sbGet('app_settings','key=eq.categories');
+    if(rows&&rows[0]&&rows[0].value&&rows[0].value.length){
+      CATEGORIES=rows[0].value;
+      saveCategories(CATEGORIES); // local cache for instant paint next time
+    }
+  }catch(e){/* app_settings table might not exist yet - keep local/default value */}
+}
+async function saveCategoriesToSupabase(cats){
+  try{
+    const res=await sbPatch('app_settings','key=eq.categories',{value:cats});
+    if(!res||!res.length){
+      await sbPost('app_settings',{key:'categories',value:cats});
+    }
+  }catch(e){console.error('Error saving categories to Supabase:',e);}
+}
 
 // ── SUPABASE CLIENT (handles auth session automatically) ──
 const sbClient=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
@@ -997,6 +1015,7 @@ async function doLogout(){
 async function launch(){
   try{allProducts=await sbGet('products','or=(active.eq.true,active.is.null)&order=cat.asc,sort_order.asc,name.asc');}catch(e){allProducts=[];}
   await fetchGlobalCutoffSettings();
+  await fetchCategoriesFromSupabase();
   document.getElementById('loading-screen').style.display='none';
   document.getElementById('auth-screen').style.display='none';
   document.getElementById('app').style.display='block';
@@ -3963,6 +3982,83 @@ function printCompletedPDF(){
   renderOrdersPDF(orders,'In Production');
 }
 
+// ── Product list PDF (admin Products tab, respects current category/status filter) ──
+function printProductListPDF(){
+  if(!adminProductsCache||!adminProductsCache.length){alert('No products loaded yet.');return;}
+
+  let list=adminProdCat==='all'?adminProductsCache:adminProductsCache.filter(p=>p.cat===adminProdCat);
+  if(adminProdStatus==='active')list=list.filter(p=>!!p.active);
+  else if(adminProdStatus==='hidden')list=list.filter(p=>!p.active);
+  else if(adminProdStatus==='out_of_stock')list=list.filter(p=>!!p.out_of_stock);
+  else if(adminProdStatus==='in_stock')list=list.filter(p=>!p.out_of_stock);
+  if(!list.length){alert('No products match the current filter.');return;}
+
+  const catOrder=['sauces','oven','desserts','small-packs','cheeses','cured-meat','vegg','frozen','dry','pastas','drinks','oils','packaging','chemical','office','backup'];
+  const grouped={};
+  list.forEach(p=>{if(!grouped[p.cat])grouped[p.cat]=[];grouped[p.cat].push(p);});
+  const allCats=[...new Set([...catOrder,...Object.keys(grouped)])].filter(c=>grouped[c]&&grouped[c].length);
+
+  const filterLabel=[
+    adminProdCat==='all'?null:(CATEGORIES.find(c=>c.id===adminProdCat)?.label||adminProdCat),
+    adminProdStatus==='all'?null:{active:'Active',hidden:'Hidden',out_of_stock:'Out of stock',in_stock:'In stock'}[adminProdStatus]
+  ].filter(Boolean).join(' • ');
+
+  let rowsHtml='';
+  allCats.forEach(catId=>{
+    const prods=grouped[catId];
+    const catLabel=CATEGORIES.find(c=>c.id===catId)?.label||catId;
+    rowsHtml+=`<tr><td colspan="4" style="background:#f2f2f2;padding:8px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#444;">${catLabel}</td></tr>`;
+    prods.forEach(p=>{
+      const statusBadge=p.active?'<span style="color:#1D9E75;">✅ Active</span>':'<span style="color:#DC2626;">⛔ Hidden</span>';
+      const stockBadge=p.out_of_stock?'<span style="color:#DC2626;">🚫 Out of stock</span>':'<span style="color:#1D9E75;">✅ In stock</span>';
+      rowsHtml+=`<tr>
+        <td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:13px;">${p.name}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:12px;color:#666;">${p.description||''}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:12px;text-align:center;">${statusBadge}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:12px;text-align:center;">${stockBadge}</td>
+      </tr>`;
+    });
+  });
+
+  const html=`
+    <div style="max-width:720px;margin:0 auto;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;padding-bottom:14px;border-bottom:2px solid #1D9E75;">
+        <div>
+          <div style="font-size:22px;font-weight:700;color:#1D9E75;">Matteo Orders</div>
+          <div style="font-size:12px;color:#555;margin-top:4px;">Product List${filterLabel?' — '+filterLabel:''}</div>
+        </div>
+        <div style="text-align:right;font-size:12px;color:#555;">
+          ${list.length} product${list.length!==1?'s':''}<br/>
+          ${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}
+        </div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="background:#ebebeb;">
+            <th style="padding:8px 10px;text-align:left;font-size:11px;color:#444;text-transform:uppercase;letter-spacing:.5px;">Product</th>
+            <th style="padding:8px 10px;text-align:left;font-size:11px;color:#444;text-transform:uppercase;letter-spacing:.5px;">Unit</th>
+            <th style="padding:8px 10px;text-align:center;font-size:11px;color:#444;text-transform:uppercase;letter-spacing:.5px;">Status</th>
+            <th style="padding:8px 10px;text-align:center;font-size:11px;color:#444;text-transform:uppercase;letter-spacing:.5px;">Stock</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+      <div style="font-size:11px;color:#555;text-align:right;margin-top:20px;padding-top:10px;border-top:1px solid #ccc;">
+        Generated ${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}
+      </div>
+    </div>`;
+
+  const area=document.getElementById('pdf-print-area');
+  area.innerHTML=html;
+  area.style.display='block';
+  window._pdfOrigTitle=document.title;
+  document.title='Matteo Orders - Product List';
+  requestAnimationFrame(()=>setTimeout(()=>{
+    window.print();
+    document.getElementById('pdf-back-btn-wrap').style.display='block';
+  },150));
+}
+
 function renderOrdersPDF(orders,sectionLabel){
   const statusColor={pending:'#F59E0B',accepted:'#1D9E75',refused:'#DC2626',completed:'#8B5CF6',delivered:'#1D9E75'};
   const statusLabel={pending:'Pending',accepted:'Accepted',in_production:'In Production',refused:'Refused',completed:'In Production',delivered:'Complete'};
@@ -4315,6 +4411,7 @@ async function openManageCategories(){
       allUsersCache=rows.filter(u=>u.username!==ADMIN_USERNAME);
     }catch(e){}
   }
+  await fetchCategoriesFromSupabase(); // pick up categories added from another device/session
   renderCatsList();
   openModal('manage-cats-modal');
 }
@@ -4381,6 +4478,7 @@ function addCategory(){
   err.style.display='none';
   CATEGORIES.push({id,label});
   saveCategories(CATEGORIES);
+  saveCategoriesToSupabase(CATEGORIES);
   document.getElementById('new-cat-id').value='';
   document.getElementById('new-cat-label').value='';
   renderCatsList();
@@ -4390,6 +4488,7 @@ function removeCategory(id){
   if(!confirm(`Remove category "${id}"? Products in this category won't be deleted.`))return;
   CATEGORIES=CATEGORIES.filter(c=>c.id!==id);
   saveCategories(CATEGORIES);
+  saveCategoriesToSupabase(CATEGORIES);
   renderCatsList();
   updateProdCatDropdown();
   renderCats();
