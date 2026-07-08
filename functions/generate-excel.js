@@ -554,7 +554,7 @@ exports.handler = async (event) => {
 
     sheet.setCell(r, 1, 'PRODUCT', { bold: true, fontColor: WHITE_COLOR, fillColor: HEADER_FILL });
     orders.forEach((o, i) => {
-      const label = o.order_number ? `#${o.order_number} ${o.display_name || o.username}` : (o.display_name || o.username);
+      const label = o.display_name || o.username;
       sheet.setCell(r, 2 + i, label, { bold: true, fontColor: WHITE_COLOR, fillColor: HEADER_FILL, align: { h: 'center', wrap: true } });
     });
     sheet.setCell(r, lastCol, 'TOTAL', { bold: true, fontColor: WHITE_COLOR, fillColor: HEADER_FILL, align: { h: 'center' } });
@@ -630,7 +630,7 @@ exports.handler = async (event) => {
     for (const [pid, qty] of Object.entries(order.items || {})) {
       qtyMap[pid] = (qtyMap[pid] || 0) + (parseInt(qty, 10) || 0);
     }
-    const label = order.order_number ? `#${order.order_number} ${order.display_name || order.username}` : (order.display_name || order.username);
+    const label = order.display_name || order.username;
     const sheet = wb.addSheet(safeSheetName(label));
 
     const titleParts = [order.display_name || order.username];
