@@ -645,6 +645,10 @@
       <input type="text" id="edit-password" placeholder="New password" style="margin-top:6px;"/>
     </div>
     <div class="field">
+      <label>Name on PDF / Excel <span style="font-weight:400;color:var(--text-tertiary);font-size:11px;">(optional — e.g. "01 - Battersea". Leave blank to just use the username)</span></label>
+      <input type="text" id="edit-display-name" placeholder="e.g. 01 - Battersea" style="margin-top:6px;"/>
+    </div>
+    <div class="field">
       <label style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px;">
         <span>Visible categories</span>
         <span style="font-size:11px;color:var(--text-tertiary);">Leave all unchecked = show all</span>
@@ -1010,6 +1014,7 @@ async function launch(){
     updateProdCatDropdown();
     loadChatUnreadBadge();
     loadCompleteBadge();
+    fetchDisplayNameMap();
     // Load In Production and Delivery badge counts silently
     sbGet('orders_history','status=eq.in_production&deleted_at=is.null').then(r=>{const b=document.getElementById('inproduction-badge');if(b&&r.length){b.style.display='inline';b.textContent=r.length;}}).catch(()=>{});
     sbGet('orders_history','status=eq.completed&deleted_at=is.null').then(r=>{const b=document.getElementById('delivery-badge');if(b&&r.length){b.style.display='inline';b.textContent=r.length;}}).catch(()=>{});
@@ -1939,7 +1944,7 @@ async function addItemToOrder(orderId){
 }
 function openAcceptModal(id){
   refusingOrderId=id; // reuse same tracking variable
-  document.getElementById('accept-message').value='';
+  document.getElementById('accept-message').value='Order confirmed, delivery will be made on your usual delivery route.';
   openModal('accept-modal');
 }
 async function confirmAccept(){
@@ -2658,7 +2663,7 @@ async function exportDeliveryExcelMulti(){
   if(btn){btn.disabled=true;btn.textContent='⏳ Generating...';}
   try{
     const payload={
-      orders:orders.map(o=>({username:o.username,order_number:o.order_number||null,ordered_by:o.ordered_by||'',items:o.items})),
+      orders:orders.map(o=>({username:o.username,display_name:displayNameFor(o.username),order_number:o.order_number||null,ordered_by:o.ordered_by||'',items:o.items})),
       products:allProducts.map(p=>({id:String(p.id),name:p.name,description:p.description||'',cat:p.cat,emoji:p.emoji||'',sort_order:p.sort_order||0})),
       categories:CATEGORIES.filter(c=>c.id!=='all').map(c=>({id:c.id,label:c.label}))
     };
@@ -2764,7 +2769,7 @@ function printDeliveryPDFMulti(orders){
       <div style="display:flex;gap:10px;margin-bottom:10px;">
         <div style="background:#f4f4f4;border-radius:6px;padding:6px 12px;flex:1;">
           <div style="font-size:9px;color:#555;text-transform:uppercase;letter-spacing:.5px;">Client</div>
-          <div style="font-size:15px;font-weight:700;">${o.username}</div>
+          <div style="font-size:15px;font-weight:700;">${displayNameFor(o.username)}</div>
         </div>
         ${o.ordered_by?`<div style="background:#e6f9f2;border-radius:6px;padding:6px 12px;flex:1;">
           <div style="font-size:9px;color:#1D9E75;text-transform:uppercase;letter-spacing:.5px;">Ordered by</div>
@@ -3091,6 +3096,7 @@ async function exportClientHistoryExcel(){
     const payload={
       orders:orders.map(o=>({
         username:o.username,
+        display_name:displayNameFor(o.username),
         items:o.items,
         order_number:o.order_number,
         status:o.status,
@@ -3165,7 +3171,7 @@ async function exportCompletedExcel(){
   if(btn){btn.disabled=true;btn.textContent='⏳ Generating...';}
   try{
     const payload={
-      orders:orders.map(o=>({username:o.username,order_number:o.order_number||null,ordered_by:o.ordered_by||'',items:o.items})),
+      orders:orders.map(o=>({username:o.username,display_name:displayNameFor(o.username),order_number:o.order_number||null,ordered_by:o.ordered_by||'',items:o.items})),
       products:allProducts.map(p=>({id:String(p.id),name:p.name,description:p.description||'',cat:p.cat,emoji:p.emoji||'',sort_order:p.sort_order||0})),
       categories:CATEGORIES.filter(c=>c.id!=='all').map(c=>({id:c.id,label:c.label}))
     };
@@ -3265,6 +3271,7 @@ async function loadUsers(){
   try{
     const rows=await sbGet('users','order=sort_order.asc,created_at.asc');
     allUsersCache=rows.filter(u=>u.username!==ADMIN_USERNAME);
+    refreshDisplayNameMap(rows);
     const nonAdmin=rows.filter(u=>u.username!==ADMIN_USERNAME);
     el.innerHTML=`<div class="user-row header"><span>Username</span><span>Password</span><span>Change PW</span><span>Remove</span></div>`+
       nonAdmin.map((u,i)=>`<div class="user-row" data-user="${u.username}">
@@ -3273,13 +3280,32 @@ async function loadUsers(){
             <button onclick="moveUser('${u.username}',-1)" style="border:none;background:none;cursor:pointer;color:#9CA3AF;font-size:10px;padding:0 3px;line-height:1;opacity:.7;transition:opacity .15s;" title="Move up">⌃</button>
             <button onclick="moveUser('${u.username}',1)" style="border:none;background:none;cursor:pointer;color:#9CA3AF;font-size:10px;padding:0 3px;line-height:1;opacity:.7;transition:opacity .15s;" title="Move down">⌄</button>
           </div>
-          ${u.username}
+          ${u.username}${u.display_name?` <span style="color:var(--text-tertiary);font-size:11px;font-weight:400;">(${u.display_name})</span>`:''}
         </span>
         <span style="font-family:monospace">${u.password}</span>
         <button class="btn-sm" onclick="openEditUser('${u.username}','${u.auth_user_id||''}')">✏️ Edit</button>
         <button class="btn-danger" onclick="deleteUser('${u.username}','${u.auth_user_id||''}')">Remove</button>
       </div>`).join('');
   }catch(e){el.innerHTML='<div style="padding:1rem;font-size:13px;color:var(--red)">Error loading users.</div>';}
+}
+
+// ── Display name (PDF/Excel label) lookup, without touching login/username ──
+let usersDisplayNameMap={};
+function refreshDisplayNameMap(rows){
+  if(rows){
+    usersDisplayNameMap={};
+    rows.forEach(u=>{if(u.display_name)usersDisplayNameMap[u.username]=u.display_name;});
+  }
+}
+async function fetchDisplayNameMap(){
+  try{
+    const rows=await sbGet('users','select=username,display_name');
+    usersDisplayNameMap={};
+    rows.forEach(u=>{if(u.display_name)usersDisplayNameMap[u.username]=u.display_name;});
+  }catch(e){}
+}
+function displayNameFor(username){
+  return usersDisplayNameMap[username]||username;
 }
 
 async function moveUser(username, direction){
@@ -3329,9 +3355,11 @@ function openEditUser(username,authUserId){
   document.getElementById('edit-user-label').textContent=`User: ${username}`;
   document.getElementById('edit-username').value=username;
   document.getElementById('edit-password').value='';
+  document.getElementById('edit-display-name').value='';
   document.getElementById('edit-user-error').style.display='none';
   document.getElementById('edit-user-products').innerHTML='<div style="font-size:12px;color:var(--text-tertiary);">Loading...</div>';
   sbGet('users',`username=eq.${encodeURIComponent(username)}`).then(rows=>{
+    document.getElementById('edit-display-name').value=(rows[0]&&rows[0].display_name)||'';
     const userCats=(rows[0]&&rows[0].visible_categories)||[];
     const userProds=(rows[0]&&rows[0].visible_products)||[];
     const userProdSet=new Set(userProds.map(String));
@@ -3410,7 +3438,8 @@ async function saveUserSettings(){
   try{
     const updatePayload={
       visible_categories:selectedCats.length?selectedCats:null,
-      visible_products:selectedProds.length?selectedProds:null
+      visible_products:selectedProds.length?selectedProds:null,
+      display_name:document.getElementById('edit-display-name').value.trim()||null
     };
     if(newUsername!==editingUsername) updatePayload.username=newUsername;
     await sbPatch('users',`username=eq.${encodeURIComponent(editingUsername)}`,updatePayload);
@@ -3419,7 +3448,7 @@ async function saveUserSettings(){
       const res=await workerCall('/change-password',{username:newUsername,auth_user_id:editingUserId,new_password:p});
       if(res.error){err.textContent='Error: '+res.error;err.style.display='block';return;}
     }
-    closeModal('edit-user-modal');loadUsers();
+    closeModal('edit-user-modal');loadUsers();fetchDisplayNameMap();
   }catch(e){err.textContent='Error saving: '+e.message;err.style.display='block';}
 }
 async function saveUserPassword(){
@@ -3972,7 +4001,7 @@ function renderOrdersPDF(orders,sectionLabel){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
         <div style="background:#f2f2f2;border-radius:8px;padding:10px 14px;">
           <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Client account</div>
-          <div style="font-size:14px;font-weight:600;">${o.username}</div>
+          <div style="font-size:14px;font-weight:600;">${displayNameFor(o.username)}</div>
         </div>
         <div style="background:#f2f2f2;border-radius:8px;padding:10px 14px;">
           <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">Placed by</div>
@@ -4093,7 +4122,7 @@ function generateOrderPDF(order){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
         <div style="background:#f4f4f4;border-radius:8px;padding:12px 14px;">
           <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Client</div>
-          <div style="font-size:14px;font-weight:600;">${order.username}</div>
+          <div style="font-size:14px;font-weight:600;">${displayNameFor(order.username)}</div>
           ${order.ordered_by?`<div style="font-size:12px;color:#444;margin-top:2px;">👤 Placed by: <b>${order.ordered_by}</b></div>`:''}
         </div>
         <div style="background:#f4f4f4;border-radius:8px;padding:12px 14px;">
@@ -4130,7 +4159,7 @@ function generateOrderPDF(order){
   area.innerHTML=html;
   area.style.display='block';
   window._pdfOrigTitle=document.title;
-  document.title=`Order ${order.username}${order.order_number?' #'+order.order_number:''}`;
+  document.title=`Order ${displayNameFor(order.username)}${order.order_number?' #'+order.order_number:''}`;
   requestAnimationFrame(()=>setTimeout(()=>{
     window.print();
     document.getElementById('pdf-back-btn-wrap').style.display='block';
@@ -4591,7 +4620,7 @@ async function exportExcel(){
 
   try{
     const payload={
-      orders:orders.map(o=>({username:o.username,items:o.items,order_number:o.order_number,status:o.status,timestamp:o.timestamp,ordered_by:o.ordered_by||''})),
+      orders:orders.map(o=>({username:o.username,display_name:displayNameFor(o.username),items:o.items,order_number:o.order_number,status:o.status,timestamp:o.timestamp,ordered_by:o.ordered_by||''})),
       products:allProducts.map(p=>({id:p.id,name:p.name,description:p.description||'',cat:p.cat,sort_order:p.sort_order||0}))
     };
 
