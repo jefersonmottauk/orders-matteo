@@ -370,7 +370,7 @@
       <div id="completed-subtab-delivery">
         <div class="section-toolbar">
           <h2>🚚 Delivery Sheet</h2>
-          <button class="btn-sm" onclick="loadDeliveryOrders()">↻ Refresh</button>
+          <button class="btn-sm" onclick="resetDeliveryTab()">↻ Refresh</button>
         </div>
         <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Select a completed order, review/edit quantities and add notes for each product. Then export the delivery Excel to send to the client.</p>
         <div style="margin-bottom:12px;">
@@ -1813,7 +1813,7 @@ function showAdminTab(t,el){
   if(el)el.classList.add('active');
   if(t==='orders')loadAdminOrders();
   if(t==='completed')loadCompletedOrders();
-  if(t==='delivery'){loadDeliveryOrders();}
+  if(t==='delivery'){resetDeliveryTab();}
   if(t==='complete')loadCompleteOrders();
   if(t==='users'){loadUsers();}
   if(t==='products')loadAdminProducts();
@@ -2293,6 +2293,18 @@ function switchCompletedSubTab(tab){
   if(tab==='delivery') showAdminTab('delivery', document.querySelectorAll('#admin-tabs .tab')[2]);
 }
 
+// Full reset of the Delivery tab — clears the selected order, closes the editor and
+// unchecks the multi-select list, exactly as if the tab had just been opened fresh.
+function resetDeliveryTab(){
+  const sel=document.getElementById('delivery-order-select');
+  if(sel)sel.value='';
+  const editor=document.getElementById('delivery-editor');
+  if(editor)editor.innerHTML='';
+  deliveryOrderId=null;
+  deliveryItems={};
+  document.querySelectorAll('#delivery-multi-list input[type=checkbox]').forEach(cb=>cb.checked=false);
+  loadDeliveryOrders();
+}
 async function loadDeliveryOrders(){
   try{
     const rows=await sbGet('orders_history','status=eq.completed&deleted_at=is.null&or=(admin_purged.eq.false,admin_purged.is.null)&order=queue_order.asc,created_at.desc');
