@@ -423,11 +423,16 @@
     <div id="tab-trash" style="display:none;">
       <div class="section-toolbar">
         <h2>🗑 Trash</h2>
-        <button class="btn-sm" onclick="loadTrash()">↻ Refresh</button>
+        <button class="btn-sm" onclick="loadTrash();loadTrashedUsers();">↻ Refresh</button>
         <button class="btn-sm green" onclick="restoreSelectedOrders()">↩ Restore selected</button>
         <button class="btn-sm red" onclick="permanentlyDeleteSelected()">✕ Delete permanently</button>
       </div>
       <div id="trash-list"></div>
+
+      <div style="margin-top:28px;padding-top:16px;border-top:2px solid var(--border);">
+        <h3 style="font-size:15px;margin-bottom:10px;">👤 Deleted Users</h3>
+        <div id="trash-users-list"></div>
+      </div>
     </div>
 
     <!-- ADMIN: COMPLETE (delivered orders) -->
@@ -526,6 +531,22 @@
     <div class="modal-btns" style="flex-direction:column;gap:8px;">
       <button class="primary" style="width:100%;" onclick="shareSubmittedOrderPDF()">📄 Save / Share PDF</button>
       <button style="width:100%;" onclick="closeModal('share-order-modal')">Not now</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="user-action-modal">
+  <div class="modal" style="max-width:400px;width:92vw;">
+    <h3 id="user-action-title">🔒 Confirm</h3>
+    <p id="user-action-message" style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;"></p>
+    <div class="field">
+      <label>Enter admin password to confirm</label>
+      <input type="password" id="user-action-password" placeholder="Admin password" style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;font-size:14px;background:var(--bg);width:100%;margin-top:6px;"/>
+    </div>
+    <div class="modal-error" id="user-action-error" style="display:none;"></div>
+    <div class="modal-btns">
+      <button onclick="closeModal('user-action-modal')">Cancel</button>
+      <button class="primary" id="user-action-confirm-btn" style="background:var(--red);border-color:var(--red);" onclick="confirmUserAction()">Confirm</button>
     </div>
   </div>
 </div>
@@ -1090,6 +1111,14 @@ async function init(){
   document.getElementById('loading-screen').style.display='none';
   document.getElementById('auth-screen').style.display='flex';
 }
+// Checks whether a client account has been soft-deleted (moved to Trash) — used to
+// block login even if the underlying Supabase Auth session still authenticates fine.
+async function isUserDeleted(username){
+  try{
+    const rows=await sbGet('users',`username=ilike.${encodeURIComponent(username)}`);
+    return !!(rows[0]&&rows[0].deleted_at);
+  }catch(e){return false;}
+}
 async function doLogin(){
   const u=document.getElementById('login-user').value.trim().toLowerCase();
   const p=document.getElementById('login-pass').value;
@@ -1101,6 +1130,9 @@ async function doLogin(){
     const {data,error}=await sbClient.auth.signInWithPassword({email,password:p});
     if(error||!data.session){
       err.textContent='Incorrect username or password.';err.style.display='block';
+    } else if(u!==ADMIN_USERNAME&&await isUserDeleted(u)){
+      await sbClient.auth.signOut();
+      err.textContent='This account has been disabled. Please contact the supplier.';err.style.display='block';
     } else {
       currentUser=u;
       currentUserId=data.user.id;
@@ -1973,7 +2005,7 @@ function showAdminTab(t,el){
   if(t==='complete')loadCompleteOrders();
   if(t==='users'){loadUsers();}
   if(t==='products')loadAdminProducts();
-  if(t==='trash')loadTrash();
+  if(t==='trash'){loadTrash();loadTrashedUsers();}
   if(t==='chat'){chatHideComposePage();chatLoadHistory();chatEnsureUsers();}
 }
 
@@ -3456,7 +3488,7 @@ async function loadUsers(){
   const el=document.getElementById('user-table');
   el.innerHTML='<div style="padding:1rem;font-size:13px;color:var(--text-secondary)">Loading...</div>';
   try{
-    const rows=await sbGet('users','order=sort_order.asc,created_at.asc');
+    const rows=await sbGet('users','deleted_at=is.null&order=sort_order.asc,created_at.asc');
     allUsersCache=rows.filter(u=>u.username!==ADMIN_USERNAME);
     refreshDisplayNameMap(rows);
     const nonAdmin=rows.filter(u=>u.username!==ADMIN_USERNAME);
@@ -3508,13 +3540,74 @@ async function moveUser(username, direction){
     loadUsers();
   }catch(e){console.error(e);}
 }
-async function deleteUser(username,authUserId){
-  if(!confirm(`Remove user "${username}"?`))return;
+
+// ── Delete user: password-protected soft-delete (moves to Trash, never immediate/permanent) ──
+let _pendingUserAction=null; // {type:'soft'|'restore'|'permanent', username, authUserId}
+function deleteUser(username,authUserId){
+  _pendingUserAction={type:'soft',username,authUserId};
+  document.getElementById('user-action-title').textContent='🔒 Remove user';
+  document.getElementById('user-action-message').textContent=`Remove "${username}"? They'll be moved to Trash and won't be able to log in — you can restore them later from there.`;
+  document.getElementById('user-action-confirm-btn').textContent='Remove user';
+  document.getElementById('user-action-password').value='';
+  document.getElementById('user-action-error').style.display='none';
+  openModal('user-action-modal');
+}
+function permanentlyDeleteUser(username,authUserId){
+  _pendingUserAction={type:'permanent',username,authUserId};
+  document.getElementById('user-action-title').textContent='⚠️ Permanently delete user';
+  document.getElementById('user-action-message').textContent=`This will permanently delete "${username}"'s login and all their saved settings. This CANNOT be undone.`;
+  document.getElementById('user-action-confirm-btn').textContent='Delete permanently';
+  document.getElementById('user-action-password').value='';
+  document.getElementById('user-action-error').style.display='none';
+  openModal('user-action-modal');
+}
+async function confirmUserAction(){
+  const pass=document.getElementById('user-action-password').value;
+  const err=document.getElementById('user-action-error');
+  if(pass!==ADMIN_PASS){err.textContent='Incorrect password.';err.style.display='block';return;}
+  err.style.display='none';
+  const action=_pendingUserAction;
+  if(!action)return;
   try{
-    const res=await workerCall('/delete-user',{username,auth_user_id:authUserId});
-    if(res.error){alert('Error: '+res.error);return;}
+    if(action.type==='soft'){
+      await sbPatch('users',`username=eq.${encodeURIComponent(action.username)}`,{deleted_at:new Date().toISOString()});
+      loadUsers();
+      loadTrashedUsers();
+    } else if(action.type==='permanent'){
+      const res=await workerCall('/delete-user',{username:action.username,auth_user_id:action.authUserId});
+      if(res.error){err.textContent='Error: '+res.error;err.style.display='block';return;}
+      loadTrashedUsers();
+    }
+    closeModal('user-action-modal');
+  }catch(e){err.textContent='Error: '+e.message;err.style.display='block';}
+}
+async function restoreUser(username){
+  try{
+    await sbPatch('users',`username=eq.${encodeURIComponent(username)}`,{deleted_at:null});
+    loadTrashedUsers();
     loadUsers();
-  }catch(e){alert('Error removing user: '+e.message);}
+  }catch(e){alert('Error restoring user: '+e.message);}
+}
+async function loadTrashedUsers(){
+  const el=document.getElementById('trash-users-list');
+  if(!el)return;
+  el.innerHTML='<div class="empty-state">Loading...</div>';
+  try{
+    const rows=await sbGet('users','deleted_at=not.is.null&order=deleted_at.desc');
+    if(!rows.length){el.innerHTML='<div class="empty-state">No deleted users.</div>';return;}
+    el.innerHTML=rows.map(u=>{
+      const deletedDate=new Date(u.deleted_at).toLocaleDateString('en-GB')+' '+new Date(u.deleted_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+      return `<div class="order-card refused" style="opacity:.85;">
+        <div class="order-card-header" style="cursor:default;">
+          <span class="order-card-user">${u.username}${u.display_name?` <span style="font-size:11px;color:var(--text-tertiary);">(${u.display_name})</span>`:''} <span style="font-weight:400;color:var(--text-secondary);font-size:12px;">— deleted ${deletedDate}</span></span>
+          <span style="display:flex;gap:6px;">
+            <button class="btn-sm green" onclick="restoreUser('${u.username}')">↩ Restore</button>
+            <button class="btn-sm red" onclick="permanentlyDeleteUser('${u.username}','${u.auth_user_id||''}')">✕ Delete permanently</button>
+          </span>
+        </div>
+      </div>`;
+    }).join('');
+  }catch(e){el.innerHTML='<div class="empty-state">Error loading deleted users.</div>';}
 }
 function openAddUser(){
   document.getElementById('new-username').value='';document.getElementById('new-password').value='';
