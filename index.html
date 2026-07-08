@@ -526,6 +526,30 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="backup-reminder-modal">
+  <div class="modal" style="max-width:440px;width:92vw;">
+    <h3>🗄️ Monthly Security Backup</h3>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">It's a new month — have you exported a backup copy of your data from Supabase this month?</p>
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--text-secondary);">
+      In the Supabase <b>SQL Editor</b>, run each of these and click <b>Export → CSV</b> on the results:
+      <div style="font-family:monospace;background:var(--surface);border-radius:4px;padding:8px 10px;margin-top:6px;font-size:11px;line-height:1.6;">
+        SELECT * FROM orders_history;<br/>
+        SELECT * FROM users;<br/>
+        SELECT * FROM products;
+      </div>
+    </div>
+    <div class="field">
+      <label>Enter admin password to confirm and archive this reminder for this month</label>
+      <input type="password" id="backup-reminder-password" placeholder="Admin password" style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;font-size:14px;background:var(--bg);width:100%;margin-top:6px;"/>
+    </div>
+    <div class="modal-error" id="backup-reminder-error" style="display:none;"></div>
+    <div class="modal-btns">
+      <button onclick="dismissBackupReminderLater()">Remind me later</button>
+      <button class="primary" onclick="confirmBackupReminder()">✅ Confirm & Archive</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="chat-delete-modal">
   <div class="modal" style="max-width:380px;width:92vw;">
     <h3>🔒 Confirm Delete</h3>
@@ -856,6 +880,44 @@ async function workerCall(path,body){
 }
 
 // ── CUT TIME ──
+// ── Monthly backup reminder (admin only) ──
+async function checkBackupReminder(){
+  try{
+    const rows=await sbGet('app_settings','key=eq.backup_reminder');
+    const val=(rows&&rows[0]&&rows[0].value)||{};
+    const now=new Date();
+    const currentMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    if(val.lastConfirmedMonth!==currentMonth){
+      openBackupReminderModal(currentMonth);
+    }
+  }catch(e){/* app_settings table might not exist yet - skip silently */}
+}
+function openBackupReminderModal(currentMonth){
+  window._backupReminderMonth=currentMonth;
+  const pw=document.getElementById('backup-reminder-password');
+  const err=document.getElementById('backup-reminder-error');
+  if(pw)pw.value='';
+  if(err)err.style.display='none';
+  openModal('backup-reminder-modal');
+}
+function dismissBackupReminderLater(){
+  closeModal('backup-reminder-modal');
+}
+async function confirmBackupReminder(){
+  const pass=document.getElementById('backup-reminder-password').value;
+  const err=document.getElementById('backup-reminder-error');
+  if(pass!==ADMIN_PASS){err.textContent='Incorrect password.';err.style.display='block';return;}
+  err.style.display='none';
+  try{
+    const value={lastConfirmedMonth:window._backupReminderMonth,confirmedAt:new Date().toISOString()};
+    const res=await sbPatch('app_settings','key=eq.backup_reminder',{value});
+    if(!res||!res.length){
+      await sbPost('app_settings',{key:'backup_reminder',value});
+    }
+    closeModal('backup-reminder-modal');
+  }catch(e){err.textContent='Error: '+e.message;err.style.display='block';}
+}
+
 async function fetchGlobalCutoffSettings(){
   try{
     const rows=await sbGet('app_settings','key=eq.cutoff');
@@ -1077,6 +1139,7 @@ async function launch(){
     loadChatUnreadBadge();
     loadCompleteBadge();
     fetchDisplayNameMap();
+    checkBackupReminder();
     // Load In Production and Delivery badge counts silently
     sbGet('orders_history','status=eq.in_production&deleted_at=is.null').then(r=>{const b=document.getElementById('inproduction-badge');if(b&&r.length){b.style.display='inline';b.textContent=r.length;}}).catch(()=>{});
     sbGet('orders_history','status=eq.completed&deleted_at=is.null').then(r=>{const b=document.getElementById('delivery-badge');if(b&&r.length){b.style.display='inline';b.textContent=r.length;}}).catch(()=>{});
