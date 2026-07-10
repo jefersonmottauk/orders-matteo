@@ -233,9 +233,21 @@ ${sheetOverrides}
     const sheetsXml = this.sheets
       .map((s, i) => `<sheet name="${esc(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`)
       .join('');
+    // Print Titles: rows that repeat at the top of every printed page (e.g. the
+    // PRODUCT / client-name header row), one per sheet that requested it.
+    const definedNamesArr = [];
+    this.sheets.forEach((s, i) => {
+      if (s.printTitleRows) {
+        const [start, end] = s.printTitleRows;
+        const sheetNameForFormula = s.name.replace(/'/g, "''");
+        definedNamesArr.push(`<definedName name="_xlnm.Print_Titles" localSheetId="${i}">'${esc(sheetNameForFormula)}'!$${start}:$${end}</definedName>`);
+      }
+    });
+    const definedNamesXml = definedNamesArr.length ? `<definedNames>${definedNamesArr.join('')}</definedNames>` : '';
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <sheets>${sheetsXml}</sheets>
+${definedNamesXml}
 </workbook>`;
   }
 
@@ -357,6 +369,8 @@ class Sheet {
     this.freezeRow = 0;
     this.maxRow = 0;
     this.maxCol = 0;
+    this.rowBreaks = []; // row numbers AFTER which a manual print page break occurs
+    this.printTitleRows = null; // [startRow, endRow] to repeat at the top of every printed page
   }
 
   setColWidth(col, width) {
@@ -369,6 +383,18 @@ class Sheet {
 
   mergeCells(r1, c1, r2, c2) {
     this.merges.push([r1, c1, r2, c2]);
+  }
+
+  // Forces printing to start a new page right at `row` (i.e. the break is placed
+  // after the previous row).
+  addPageBreakBeforeRow(row) {
+    if (row > 1) this.rowBreaks.push(row - 1);
+  }
+
+  // Rows (inclusive, 1-based) that should repeat at the top of every printed page
+  // — e.g. the title + column header rows.
+  setPrintTitleRows(startRow, endRow) {
+    this.printTitleRows = [startRow, endRow];
   }
 
   setCell(row, col, value, style) {
@@ -421,6 +447,13 @@ class Sheet {
       ? `<sheetViews><sheetView showGridLines="0" workbookViewId="0"><pane ySplit="${this.freezeRow}" topLeftCell="A${this.freezeRow + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`
       : '<sheetViews><sheetView showGridLines="0" workbookViewId="0"/></sheetViews>';
 
+    const pageMarginsXml = '<pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>';
+    const rowBreaksXml = this.rowBreaks.length
+      ? `<rowBreaks count="${this.rowBreaks.length}" manualBreakCount="${this.rowBreaks.length}">${this.rowBreaks
+          .map((id) => `<brk id="${id}" max="16383" man="1"/>`)
+          .join('')}</rowBreaks>`
+      : '';
+
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
 <dimension ref="${dim}"/>
@@ -428,6 +461,8 @@ ${paneXml}
 <cols>${colsXml}</cols>
 <sheetData>${rowsXml}</sheetData>
 ${mergesXml}
+${pageMarginsXml}
+${rowBreaksXml}
 </worksheet>`;
   }
 }
@@ -468,6 +503,11 @@ exports.handler = async (event) => {
   ];
   const catOrder = categories.length ? categories : DEFAULT_CAT_ORDER;
 
+  // Print layout: force a new printed page to start right when this category's
+  // section begins (categories before it share the earlier page(s)).
+  const PAGE_BREAK_BEFORE_CAT_ID = 'pastas';
+  const breakCatIndex = catOrder.findIndex((c) => c.id === PAGE_BREAK_BEFORE_CAT_ID);
+
   const productsByCat = {};
   for (const cat of catOrder) productsByCat[cat.id] = [];
   for (const p of products) {
@@ -499,24 +539,37 @@ exports.handler = async (event) => {
     if (checkbox) sheet.setColWidth(3, 10);
 
     let r = 1;
+    const titleRow = title ? 1 : null;
     if (title) {
       sheet.mergeCells(r, 1, r, lastCol);
       sheet.setCell(r, 1, title, { bold: true, fontSize: 14, fontColor: GREEN_COLOR });
       r += 2;
     }
 
+    const headerRow = r;
     sheet.setCell(r, 1, 'PRODUCT', { bold: true, fontColor: WHITE_COLOR, fillColor: HEADER_FILL });
     sheet.setCell(r, 2, 'QTY', { bold: true, fontColor: WHITE_COLOR, fillColor: HEADER_FILL, align: { h: 'center' } });
     if (checkbox) sheet.setCell(r, 3, 'CHECK', { bold: true, fontColor: WHITE_COLOR, fillColor: HEADER_FILL, align: { h: 'center' } });
     sheet.freezeHeaderRows(r);
+    // Repeat the title (if any) + header row at the top of every printed page.
+    sheet.setPrintTitleRows(titleRow || headerRow, headerRow);
     r += 1;
 
     let grandTotal = 0;
+    let breakInserted = false;
 
-    for (const cat of catOrder) {
+    for (let ci = 0; ci < catOrder.length; ci++) {
+      const cat = catOrder[ci];
       const prods = (productsByCat[cat.id] || []).slice().sort((a, b) => ((a.sort_order || 0) - (b.sort_order || 0)) || a.name.localeCompare(b.name));
       const rowsForCat = includeAllProducts ? prods : prods.filter((p) => (qtyMap[p.id] || 0) > 0);
       if (!rowsForCat.length) continue;
+
+      // Start a fresh printed page right as we reach the "pastas" category (or
+      // whichever category is first at/after it, if pastas itself has no rows here).
+      if (!breakInserted && breakCatIndex !== -1 && ci >= breakCatIndex) {
+        sheet.addPageBreakBeforeRow(r);
+        breakInserted = true;
+      }
 
       sheet.setCell(r, 1, cat.label.toUpperCase(), { bold: true, fillColor: CAT_FILL });
       sheet.setCell(r, 2, '', { fillColor: CAT_FILL });
@@ -546,12 +599,14 @@ exports.handler = async (event) => {
     sheet.setColWidth(lastCol, 12);
 
     let r = 1;
+    const titleRow = title ? 1 : null;
     if (title) {
       sheet.mergeCells(r, 1, r, lastCol);
       sheet.setCell(r, 1, title, { bold: true, fontSize: 14, fontColor: GREEN_COLOR });
       r += 2;
     }
 
+    const headerRow = r;
     sheet.setCell(r, 1, 'PRODUCT', { bold: true, fontColor: WHITE_COLOR, fillColor: HEADER_FILL });
     orders.forEach((o, i) => {
       const label = o.display_name || o.username;
@@ -559,17 +614,28 @@ exports.handler = async (event) => {
     });
     sheet.setCell(r, lastCol, 'TOTAL', { bold: true, fontColor: WHITE_COLOR, fillColor: HEADER_FILL, align: { h: 'center' } });
     sheet.freezeHeaderRows(r);
+    // Repeat the title (if any) + PRODUCT/client header row at the top of every printed page.
+    sheet.setPrintTitleRows(titleRow || headerRow, headerRow);
     r += 1;
 
     const colTotals = new Array(numClients).fill(0);
     let grandTotal = 0;
+    let breakInserted = false;
 
-    for (const cat of catOrder) {
+    for (let ci = 0; ci < catOrder.length; ci++) {
+      const cat = catOrder[ci];
       const prods = (productsByCat[cat.id] || []).slice().sort((a, b) => ((a.sort_order || 0) - (b.sort_order || 0)) || a.name.localeCompare(b.name));
       const rowsForCat = includeAllProducts
         ? prods
         : prods.filter((p) => (totalQtyByProduct[p.id] || 0) > 0);
       if (!rowsForCat.length) continue;
+
+      // Start a fresh printed page right as we reach the "pastas" category (or
+      // whichever category is first at/after it, if pastas itself has no rows here).
+      if (!breakInserted && breakCatIndex !== -1 && ci >= breakCatIndex) {
+        sheet.addPageBreakBeforeRow(r);
+        breakInserted = true;
+      }
 
       sheet.setCell(r, 1, cat.label.toUpperCase(), { bold: true, fillColor: CAT_FILL });
       for (let i = 0; i < numClients; i++) sheet.setCell(r, 2 + i, '', { fillColor: CAT_FILL });
@@ -597,6 +663,64 @@ exports.handler = async (event) => {
     }
   }
 
+  // Production sheet: only products flagged for production tracking (managed from
+  // the admin Products tab). Always lists every flagged product (like "All Products"),
+  // with a blank OBSERVATION column for handwritten notes after printing.
+  function buildProductionSheet(sheet, { productionProducts, title }) {
+    const lastCol = 3; // PRODUCT, QTY, OBSERVATION
+    sheet.setColWidth(1, 34);
+    sheet.setColWidth(2, 10);
+    sheet.setColWidth(3, 30);
+
+    const idsSet = new Set(productionProducts.map((p) => String(p.id)));
+
+    let r = 1;
+    const titleRow = title ? 1 : null;
+    if (title) {
+      sheet.mergeCells(r, 1, r, lastCol);
+      sheet.setCell(r, 1, title, { bold: true, fontSize: 14, fontColor: GREEN_COLOR });
+      r += 2;
+    }
+
+    const headerRow = r;
+    sheet.setCell(r, 1, 'PRODUCT', { bold: true, fontColor: WHITE_COLOR, fillColor: HEADER_FILL });
+    sheet.setCell(r, 2, 'QTY', { bold: true, fontColor: WHITE_COLOR, fillColor: HEADER_FILL, align: { h: 'center' } });
+    sheet.setCell(r, 3, 'OBSERVATION', { bold: true, fontColor: WHITE_COLOR, fillColor: HEADER_FILL });
+    sheet.freezeHeaderRows(r);
+    sheet.setPrintTitleRows(titleRow || headerRow, headerRow);
+    r += 1;
+
+    let breakInserted = false;
+
+    for (let ci = 0; ci < catOrder.length; ci++) {
+      const cat = catOrder[ci];
+      const prods = (productsByCat[cat.id] || [])
+        .filter((p) => idsSet.has(String(p.id)))
+        .slice()
+        .sort((a, b) => ((a.sort_order || 0) - (b.sort_order || 0)) || a.name.localeCompare(b.name));
+      if (!prods.length) continue;
+
+      if (!breakInserted && breakCatIndex !== -1 && ci >= breakCatIndex) {
+        sheet.addPageBreakBeforeRow(r);
+        breakInserted = true;
+      }
+
+      sheet.setCell(r, 1, cat.label.toUpperCase(), { bold: true, fillColor: CAT_FILL });
+      sheet.setCell(r, 2, '', { fillColor: CAT_FILL });
+      sheet.setCell(r, 3, '', { fillColor: CAT_FILL });
+      r += 1;
+
+      for (const p of prods) {
+        const qty = totalQtyByProduct[p.id] || 0;
+        const name = p.description ? `${p.name} (${p.description})` : p.name;
+        sheet.setCell(r, 1, name, { border: ROW_BORDER });
+        sheet.setCell(r, 2, qty, { bold: qty > 0, fontColor: qty > 0 ? GREEN_COLOR : ZERO_COLOR, align: { h: 'center' }, border: ROW_BORDER });
+        sheet.setCell(r, 3, '', { border: ROW_BORDER }); // left blank — filled in by hand after printing
+        r += 1;
+      }
+    }
+  }
+
   // Sheet 1: All Products (one column per client + TOTAL)
   const allSheet = wb.addSheet('All Products');
   buildMultiClientSheet(allSheet, {
@@ -611,8 +735,19 @@ exports.handler = async (event) => {
     title: `Ordered Products Only — ${orders.length} order${orders.length !== 1 ? 's' : ''} combined`,
   });
 
-  // Sheet 3+: one per client order
-  const usedNames = new Set(['All Products', 'Ordered Only']);
+  // Sheet 3 (optional): Production — only products flagged in the admin's
+  // Production Management list (Products tab). Skipped entirely if none are flagged.
+  const productionProducts = products.filter((p) => p.production_tracked);
+  if (productionProducts.length) {
+    const productionSheet = wb.addSheet('Production');
+    buildProductionSheet(productionSheet, {
+      productionProducts,
+      title: `Production List — ${orders.length} order${orders.length !== 1 ? 's' : ''} combined`,
+    });
+  }
+
+  // Sheet 4+: one per client order
+  const usedNames = new Set(['All Products', 'Ordered Only', 'Production']);
   function safeSheetName(raw) {
     let name = raw.replace(/[\\/?*\[\]:]/g, ' ').trim().substring(0, 28) || 'Order';
     let candidate = name;
