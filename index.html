@@ -3228,7 +3228,8 @@ async function markDeliveryDone(){
   if(!deliveryOrderId){alert('No order selected.');return;}
   if(!confirm('Mark this delivery as complete? It will move to the Complete tab.'))return;
   try{
-    await sbPatch('orders_history',`id=eq.${deliveryOrderId}`,{status:'delivered'});
+    const now=new Date(),deliveredTs=now.toLocaleDateString('en-GB')+' '+now.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+    await sbPatch('orders_history',`id=eq.${deliveryOrderId}`,{status:'delivered',delivered_at:deliveredTs});
     document.getElementById('delivery-editor').innerHTML='<div class="empty-state">Order marked as complete ✅</div>';
     deliveryOrderId=null;
     await loadDeliveryOrders();
@@ -3262,7 +3263,7 @@ async function loadCompleteOrders(){
     if(!rows.length){el.innerHTML='<div class="empty-state">No completed deliveries yet.</div>';return;}
     el.innerHTML=rows.map(o=>{
       const count=Object.values(o.items||{}).reduce((a,b)=>a+b,0);
-      const date=o.timestamp||'';
+      const date=o.delivered_at||o.timestamp||'';
       const itemRows=Object.entries(o.items||{}).map(([id,q])=>{
         const p=allProducts.find(x=>x.id==id);
         return `<div class="order-item-row">
@@ -3290,12 +3291,13 @@ async function loadCompleteOrders(){
             ${o.order_number?`<span style="font-size:11px;background:#E5E7EB;border-radius:4px;padding:1px 6px;margin-right:4px;">#${o.order_number}</span>`:''}${o.merge_note?`<span title="${o.merge_note}" style="font-size:11px;background:#EDE9FE;color:#6D28D9;border-radius:4px;padding:1px 6px;margin-right:4px;cursor:help;">🔀 Merged</span>`:''}
             ${o.username}
             ${o.ordered_by?`<span style="font-size:11px;background:var(--green-light);color:var(--green-dark);border-radius:4px;padding:1px 6px;margin-left:4px;">👤 ${o.ordered_by}</span>`:''}
-            <span style="font-weight:400;color:var(--text-secondary);font-size:12px;">— ${date}</span>
+            <span style="font-weight:400;color:var(--text-secondary);font-size:12px;">— Completed ${date}</span>
           </span>
           <span class="order-status" style="background:#F3F4F6;color:#374151;border:1px solid #D1D5DB;">🏁 Delivered</span>
           <span style="font-size:12px;color:var(--text-secondary)">${count} items</span>
         </div>
         <div class="order-card-body" id="zcb-${o.id}">
+          <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px;">📅 Order placed: ${o.timestamp||'—'}</div>
           ${o.merge_note?`<div style="font-size:11px;color:#6D28D9;background:#F5F3FF;border-radius:6px;padding:6px 10px;margin-bottom:8px;">🔀 ${o.merge_note}</div>`:''}
           ${itemRows}
           ${addItemHtml}
