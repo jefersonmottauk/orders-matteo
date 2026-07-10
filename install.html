@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Install Matteo Orders</title>
+<link rel="icon" type="image/png" href="/icons/icon-192.png">
+<style>
+  :root{--green:#1D9E75;--bg:#F9F9F8;--ink:#1a1a1a;--muted:#666;}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink);}
+  .wrap{max-width:480px;margin:0 auto;padding:32px 20px 60px;}
+  .logo{width:88px;height:88px;border-radius:20px;display:block;margin:0 auto 16px;box-shadow:0 4px 14px rgba(0,0,0,.12);}
+  h1{text-align:center;font-size:22px;margin:0 0 4px;}
+  p.sub{text-align:center;color:var(--muted);font-size:14px;margin:0 0 28px;}
+  .tabs{display:flex;gap:8px;margin-bottom:20px;background:#eee;border-radius:10px;padding:4px;}
+  .tab{flex:1;text-align:center;padding:10px 0;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;color:var(--muted);user-select:none;}
+  .tab.active{background:#fff;color:var(--green);box-shadow:0 1px 3px rgba(0,0,0,.1);}
+  .panel{display:none;}
+  .panel.active{display:block;}
+  .step{display:flex;gap:14px;background:#fff;border:1px solid #eee;border-radius:12px;padding:14px 16px;margin-bottom:12px;align-items:flex-start;}
+  .step .num{flex:none;width:26px;height:26px;border-radius:50%;background:var(--green);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;}
+  .step .txt{font-size:14.5px;line-height:1.5;padding-top:2px;}
+  .step .txt b{color:var(--green);}
+  .icon-inline{display:inline-block;font-size:16px;vertical-align:-2px;}
+  #installBtn{display:none;width:100%;background:var(--green);color:#fff;border:none;border-radius:12px;padding:15px;font-size:16px;font-weight:700;margin-bottom:16px;cursor:pointer;}
+  #installBtn:active{opacity:.85;}
+  .already{background:#EAF7F1;border:1px solid #BFE8D6;border-radius:12px;padding:14px 16px;font-size:14px;color:#0F6B4C;margin-bottom:16px;display:none;}
+  .backlink{display:block;text-align:center;margin-top:24px;color:var(--green);font-size:13.5px;text-decoration:none;font-weight:600;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <img class="logo" src="/icons/icon-192.png" alt="Matteo Orders">
+  <h1>Install Matteo Orders</h1>
+  <p class="sub">Add the app to your home screen for one-tap access — no App Store needed.</p>
+
+  <div id="already" class="already">✅ You already have the app installed and open! You can close this page.</div>
+
+  <button id="installBtn">📲 Install App</button>
+
+  <div class="tabs">
+    <div class="tab" id="tab-ios" onclick="showPanel('ios')">iPhone / iPad</div>
+    <div class="tab" id="tab-android" onclick="showPanel('android')">Android</div>
+  </div>
+
+  <div class="panel" id="panel-ios">
+    <div class="step"><div class="num">1</div><div class="txt">Open this page in <b>Safari</b> (this won't work in Chrome or another browser on iPhone).</div></div>
+    <div class="step"><div class="num">2</div><div class="txt">Tap the <b>Share</b> icon <span class="icon-inline">⬆️</span> at the bottom of the screen.</div></div>
+    <div class="step"><div class="num">3</div><div class="txt">Scroll down the menu and tap <b>"Add to Home Screen"</b>.</div></div>
+    <div class="step"><div class="num">4</div><div class="txt">Tap <b>"Add"</b> in the top-right corner. Done — the app icon now appears on your home screen.</div></div>
+  </div>
+
+  <div class="panel" id="panel-android">
+    <div class="step"><div class="num">1</div><div class="txt">If the green <b>"Install App"</b> button above is visible, just tap it.</div></div>
+    <div class="step"><div class="num">2</div><div class="txt">If not, open Chrome's menu <span class="icon-inline">⋮</span> (top-right corner).</div></div>
+    <div class="step"><div class="num">3</div><div class="txt">Tap <b>"Install app"</b> or <b>"Add to Home screen"</b>.</div></div>
+    <div class="step"><div class="num">4</div><div class="txt">Confirm by tapping <b>"Install"</b>. Done — the app icon now appears on your home screen.</div></div>
+  </div>
+
+  <a class="backlink" href="/">Open the website instead →</a>
+</div>
+
+<script>
+  function showPanel(which){
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.getElementById('panel-'+which).classList.add('active');
+    document.getElementById('tab-'+which).classList.add('active');
+    try{localStorage.setItem('installTab',which);}catch(e){}
+  }
+
+  // Auto-detect platform
+  var ua = navigator.userAgent || '';
+  var isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+  showPanel(isIOS ? 'ios' : 'android');
+
+  // If already running as installed app, say so and hide instructions.
+  var isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  if(isStandalone){
+    document.getElementById('already').style.display='block';
+  }
+
+  // Android: capture the real native install prompt when available.
+  var deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', function(e){
+    e.preventDefault();
+    deferredPrompt = e;
+    document.getElementById('installBtn').style.display = 'block';
+  });
+  document.getElementById('installBtn').addEventListener('click', function(){
+    if(!deferredPrompt) return;
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.finally(function(){ deferredPrompt = null; });
+  });
+</script>
+</body>
+</html>
