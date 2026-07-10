@@ -12,6 +12,7 @@ const CACHE_NAME = 'matteo-orders-shell-v1';
 const APP_SHELL = [
   '/',
   '/index.html',
+  '/install.html',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
