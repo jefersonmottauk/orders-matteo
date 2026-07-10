@@ -413,6 +413,7 @@
         <h2>Products</h2>
         <button class="btn-sm green" onclick="openAddProduct()">+ Add product</button>
         <button class="btn-sm" onclick="openManageCategories()">⚙️ Categories</button>
+        <button class="btn-sm" onclick="openManageProduction()">🏭 Production List</button>
         <button class="btn-sm" style="background:#F3F4F6;border-color:#D1D5DB;color:#374151;" onclick="printProductListPDF()">🖨 PDF</button>
       </div>
       <div class="cat-row" id="admin-cat-row"></div>
@@ -708,6 +709,23 @@ union all select 'app_settings', to_jsonb(t) from app_settings t;</div>
     </div>
     <div class="modal-error" id="cats-error" style="display:none;"></div>
     <div class="modal-btns"><button onclick="closeModal('manage-cats-modal')">Close</button></div>
+  </div>
+</div>
+<div class="modal-overlay" id="production-modal">
+  <div class="modal" style="max-width:720px;width:95vw;max-height:85vh;overflow-y:auto;padding-right:24px;">
+    <h3>🏭 Production List</h3>
+    <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">
+      Select the products that should appear in the extra "Production" sheet of the
+      In Production Excel export (with a QTY and a blank OBSERVATION column for handwritten notes).
+    </p>
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+      <button class="btn-sm" onclick="toggleAllProduction(true)">Select all</button>
+      <button class="btn-sm" onclick="toggleAllProduction(false)">Select none</button>
+    </div>
+    <div id="production-products" style="max-height:340px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;"></div>
+    <div class="modal-error" id="production-error" style="display:none;"></div>
+    <div id="production-save-status" style="display:none;font-size:12px;color:var(--green-dark);margin-top:6px;"></div>
+    <div class="modal-btns"><button onclick="closeModal('production-modal')">Cancel</button><button class="primary" onclick="saveProductionList()">Save</button></div>
   </div>
 </div>
 <div class="modal-overlay" id="add-user-modal">
@@ -2119,6 +2137,7 @@ function renderOrdersList(){
         <span style="font-size:12px;color:var(--text-secondary)">${count} items</span>
       </div>
       <div class="order-card-body${openIds.has(o.id)?' open':''}" id="ob-${o.id}">
+        ${o.merge_note?`<div style="font-size:11px;color:#6D28D9;background:#F5F3FF;border-radius:6px;padding:6px 10px;margin-bottom:8px;">🔀 ${o.merge_note}</div>`:''}
         ${itemRows||'<div style="font-size:12px;color:var(--text-tertiary);padding:6px 0;">No items.</div>'}
         ${addItemHtml}
         ${reasonHtml}
@@ -2374,6 +2393,7 @@ function renderIPList(){
         <span style="font-size:12px;color:var(--text-secondary)">${count} items</span>
       </div>
       <div class="order-card-body" id="cb-${o.id}">
+        ${o.merge_note?`<div style="font-size:11px;color:#6D28D9;background:#F5F3FF;border-radius:6px;padding:6px 10px;margin-bottom:8px;">🔀 ${o.merge_note}</div>`:''}
         ${itemRows}
         ${addItemHtml}
         <div class="order-actions">
@@ -3042,6 +3062,10 @@ function printDeliveryPDFMulti(orders){
           <tbody>${renderRows(right)}</tbody>
         </table>
       </div>
+
+      <div style="margin-top:10px;padding:7px 10px;background:#FFF8E1;border-radius:6px;font-size:9.5px;color:#92400E;border-left:3px solid #F59E0B;">
+        This is a Picking Slip only. The corresponding invoice for this order will be sent separately.
+      </div>
     </div>`;
   }).join('');
 
@@ -3135,7 +3159,10 @@ async function printDeliveryPDF(){
         </thead>
         <tbody>${itemSections}</tbody>
       </table>
-      <div style="font-size:11px;color:#999;text-align:right;margin-top:20px;padding-top:12px;border-top:1px solid #eee;">
+      <div style="margin-top:16px;padding:10px 14px;background:#FFF8E1;border-radius:8px;font-size:12px;color:#92400E;border-left:3px solid #F59E0B;">
+        This is a Picking Slip only. The corresponding invoice for this order will be sent separately.
+      </div>
+      <div style="font-size:11px;color:#999;text-align:right;margin-top:12px;padding-top:12px;border-top:1px solid #eee;">
         Generated ${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}
       </div>
     </div>`;
@@ -3237,10 +3264,11 @@ async function loadCompleteOrders(){
           <span style="font-size:12px;color:var(--text-secondary)">${count} items</span>
         </div>
         <div class="order-card-body" id="zcb-${o.id}">
+          ${o.merge_note?`<div style="font-size:11px;color:#6D28D9;background:#F5F3FF;border-radius:6px;padding:6px 10px;margin-bottom:8px;">🔀 ${o.merge_note}</div>`:''}
           ${itemRows}
           ${addItemHtml}
           <div class="order-actions">
-            <button class="btn-sm" onclick="generateOrderPDF(completeOrdersCache.find(x=>x.id==='${o.id}'))">🖨 PDF</button>
+            <button class="btn-sm" onclick="generateOrderPDF(completeOrdersCache.find(x=>x.id==='${o.id}'),{pickingSlipNotice:true})">🖨 PDF</button>
             <button class="btn-sm" onclick="backToDelivery('${o.id}')" style="background:#FEF3C7;border-color:#F59E0B;color:#92400E;">↩ Back to Delivery</button>
             <button class="btn-sm red" onclick="deleteCompleteOrder('${o.id}')">🗑 Delete</button>
           </div>
@@ -3416,7 +3444,7 @@ async function exportCompletedExcel(){
   try{
     const payload={
       orders:orders.map(o=>({username:o.username,display_name:displayNameFor(o.username),order_number:o.order_number||null,ordered_by:o.ordered_by||'',items:o.items})),
-      products:allProducts.map(p=>({id:String(p.id),name:p.name,description:p.description||'',cat:p.cat,emoji:p.emoji||'',sort_order:p.sort_order||0})),
+      products:allProducts.map(p=>({id:String(p.id),name:p.name,description:p.description||'',cat:p.cat,emoji:p.emoji||'',sort_order:p.sort_order||0,production_tracked:!!p.production_tracked})),
       categories:CATEGORIES.filter(c=>c.id!=='all').map(c=>({id:c.id,label:c.label}))
     };
     const res=await fetch('/.netlify/functions/generate-excel',{
@@ -3457,7 +3485,7 @@ async function loadTrash(){
           <span style="font-size:11px;color:var(--text-tertiary)">Deleted: ${deletedDate}</span>
           <span class="order-card-count" style="background:#FEE2E2;color:#991B1B;">${count} items</span>
         </div>
-        <div class="order-card-body" id="tb-${o.id}">${itemRows}</div>
+        <div class="order-card-body" id="tb-${o.id}">${o.merge_note?`<div style="font-size:11px;color:#6D28D9;background:#F5F3FF;border-radius:6px;padding:6px 10px;margin-bottom:8px;">🔀 ${o.merge_note}</div>`:''}${itemRows}</div>
       </div>`;
     }).join('');
   }catch(e){el.innerHTML='<div class="empty-state">Error loading trash.</div>';}
@@ -4357,7 +4385,7 @@ function renderOrdersPDF(orders,sectionLabel){
 
     const itemRows=items.map(([id,q])=>{
       const p=allProducts.find(x=>String(x.id)===String(id));
-      const name=p?(p.emoji?p.emoji+' ':'')+p.name+(p.description?' ('+p.description+')':''):'Product #'+id;
+      const name=p?p.name+(p.description?' ('+p.description+')':''):'Product #'+id;
       const note=notes[id]&&notes[id].note?notes[id].note:'';
       return `<tr>
         <td style="padding:8px 12px;border-bottom:1px solid #ddd;font-size:13px;">${name}${note?`<div style="font-size:11px;color:#444;margin-top:2px;">📝 ${note}</div>`:''}</td>
@@ -4442,14 +4470,15 @@ function renderOrdersPDF(orders,sectionLabel){
   },150));
 }
 
-function generateOrderPDF(order){
+function generateOrderPDF(order,opts={}){
+  const showPickingSlipNotice=!!opts.pickingSlipNotice;
   const items=Object.entries(order.items||{});
   const original=(order.delivery_notes&&order.delivery_notes.__original__)||null;
   const deliveryNotes=order.delivery_notes||{};
 
   const itemRows=items.map(([id,q])=>{
     const p=allProducts.find(x=>String(x.id)===String(id));
-    const name=p?(p.emoji?p.emoji+' ':'')+p.name+(p.description?' ('+p.description+')':''):'Product #'+id;
+    const name=p?p.name+(p.description?' ('+p.description+')':''):'Product #'+id;
     const origQty=original?parseInt(original[id]||0):null;
     const changed=origQty!==null&&origQty!==parseInt(q);
     const note=deliveryNotes[id]||'';
@@ -4471,7 +4500,7 @@ function generateOrderPDF(order){
     Object.entries(original).forEach(([id,origQ])=>{
       if(!order.items[id]&&parseInt(origQ)>0){
         const p=allProducts.find(x=>String(x.id)===String(id));
-        const name=p?(p.emoji?p.emoji+' ':'')+p.name+(p.description?' ('+p.description+')':''):'Product #'+id;
+        const name=p?p.name+(p.description?' ('+p.description+')':''):'Product #'+id;
         const note=deliveryNotes[id]||'';
         removedRows+=`<tr>
           <td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:13px;">
@@ -4531,6 +4560,7 @@ function generateOrderPDF(order){
 
       ${order.admin_message?`<div style="padding:10px 14px;background:#e6f9f2;border-radius:8px;font-size:13px;color:#0F6E56;margin-bottom:16px;"><b>Message from supplier:</b> ${order.admin_message}</div>`:''}
       ${order.refuse_reason?`<div style="padding:10px 14px;background:#FEF2F2;border-radius:8px;font-size:13px;color:#DC2626;margin-bottom:16px;"><b>Refused:</b> ${order.refuse_reason}</div>`:''}
+      ${showPickingSlipNotice?`<div style="padding:10px 14px;background:#FFF8E1;border-radius:8px;font-size:12px;color:#92400E;border-left:3px solid #F59E0B;margin-bottom:16px;">This is a Picking Slip only. The corresponding invoice for this order will be sent separately.</div>`:''}
 
       <div style="font-size:11px;color:#555;text-align:right;margin-top:24px;padding-top:12px;border-top:1px solid #ccc;">
         Generated ${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}
@@ -4816,6 +4846,73 @@ function updateProdCatDropdown(){
   if(!sel)return;
   const cats=CATEGORIES.filter(c=>c.id!=='all');
   sel.innerHTML=cats.map(c=>`<option value="${c.id}">${c.label}</option>`).join('');
+}
+
+// ── PRODUCTION LIST MANAGEMENT (Products tab) ──
+// Lets the admin flag specific products (products.production_tracked) so they show up
+// on their own "Production" sheet in the In Production Excel export, with a QTY and a
+// blank OBSERVATION column for handwritten notes after printing.
+function openManageProduction(){
+  document.getElementById('production-error').style.display='none';
+  document.getElementById('production-save-status').style.display='none';
+  renderProductionList();
+  openModal('production-modal');
+}
+function renderProductionList(){
+  const CAT_ORDER=['sauces','oven','desserts','small-packs','cheeses','cured-meat','vegg','frozen','dry','pastas','drinks','oils','packaging','chemical','office','backup'];
+  let html='';
+  for(const catId of CAT_ORDER){
+    const cat=CATEGORIES.find(c=>c.id===catId);
+    const prods=allProducts.filter(p=>p.cat===catId&&(p.active||p.active===null));
+    if(!prods.length)continue;
+    html+=`<div style="margin-bottom:10px;">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-secondary);margin-bottom:5px;padding:3px 0;border-bottom:1px solid var(--border-light);">${cat?cat.label:catId}</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:4px;">
+      ${prods.map(p=>{
+        const checked=!!p.production_tracked;
+        return `<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:5px 8px;border:1px solid ${checked?'var(--green)':'var(--border)'};border-radius:var(--radius-sm);background:${checked?'var(--green-light)':'var(--bg)'};" id="prodtrack-label-${p.id}">
+          <input type="checkbox" id="prodtrack-${p.id}" ${checked?'checked':''} onchange="updateProductionLabel(${p.id},this.checked)" style="width:13px;height:13px;accent-color:var(--green);flex-shrink:0;"/>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}${p.description?` <span style="color:var(--text-tertiary);font-size:10px;">(${p.description})</span>`:''}</span>
+        </label>`;
+      }).join('')}
+      </div>
+    </div>`;
+  }
+  document.getElementById('production-products').innerHTML=html||'<div style="font-size:12px;color:var(--text-tertiary);">No products found.</div>';
+}
+function updateProductionLabel(prodId,checked){
+  const label=document.getElementById('prodtrack-label-'+prodId);
+  if(label){
+    label.style.background=checked?'var(--green-light)':'var(--bg)';
+    label.style.borderColor=checked?'var(--green)':'var(--border)';
+  }
+}
+function toggleAllProduction(checked){
+  allProducts.forEach(p=>{
+    const cb=document.getElementById('prodtrack-'+p.id);
+    if(cb){cb.checked=checked;updateProductionLabel(p.id,checked);}
+  });
+}
+async function saveProductionList(){
+  const err=document.getElementById('production-error');
+  const status=document.getElementById('production-save-status');
+  err.style.display='none';status.style.display='none';
+  try{
+    // Only write products whose flag actually changed, to keep this fast/light.
+    const changed=allProducts.filter(p=>{
+      const cb=document.getElementById('prodtrack-'+p.id);
+      return cb && !!cb.checked!==!!p.production_tracked;
+    });
+    await Promise.all(changed.map(p=>{
+      const cb=document.getElementById('prodtrack-'+p.id);
+      const val=!!cb.checked;
+      p.production_tracked=val; // update local cache immediately
+      return sbPatch('products',`id=eq.${p.id}`,{production_tracked:val});
+    }));
+    status.textContent=`✓ Saved (${changed.length} product${changed.length!==1?'s':''} updated).`;
+    status.style.display='block';
+    setTimeout(()=>closeModal('production-modal'),900);
+  }catch(e){err.textContent='Error saving: '+e.message;err.style.display='block';}
 }
 
 // ── IMAGE TOGGLE HELPERS ──
