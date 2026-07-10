@@ -1719,6 +1719,29 @@ function renderCart(){
     </div>`;
   }).join('');
 }
+// Fires an admin email notification (via the send-order-email Netlify Function/Resend)
+// whenever a client places or updates an order. Best-effort only — never blocks the
+// order flow and never surfaces an error to the client if the email fails to send.
+function notifyAdminNewOrder(order,isUpdate){
+  try{
+    const items=Object.entries(order.items||{}).map(([id,q])=>{
+      const p=allProducts.find(x=>x.id==id);
+      return {name:p?p.name:'Product #'+id,description:p?p.description||'':'',qty:q};
+    });
+    fetch('/.netlify/functions/send-order-email',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        username:order.username,
+        displayName:displayNameFor(order.username),
+        orderNumber:order.order_number||null,
+        timestamp:order.timestamp,
+        orderedBy:order.ordered_by||'',
+        items,
+        isUpdate:!!isUpdate
+      })
+    }).catch(()=>{/* silent — email is best-effort, never blocks the client */});
+  }catch(e){/* silent */}
+}
 async function submitOrder(){
   const count=Object.values(cart).reduce((a,b)=>a+b,0);
   if(!count){alert('Your cart is empty.');return;}
@@ -1800,6 +1823,7 @@ async function submitOrder(){
       savedOrder=rows&&rows[0];
     }
     editingExistingOrderId=null;
+    if(savedOrder)notifyAdminNewOrder(savedOrder,updateExisting);
 
     document.getElementById('order-success').style.display='block';
     document.getElementById('order-success').textContent=updateExisting?'✅ Order updated successfully!':'✅ New order submitted!';
