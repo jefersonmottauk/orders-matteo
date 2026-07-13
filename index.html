@@ -1789,7 +1789,7 @@ function renderCart(){
   el.innerHTML=Object.entries(cart).map(([id,q])=>{
     const p=allProducts.find(x=>x.id==id);
     const step=(p&&p.order_multiple>1)?p.order_multiple:1;
-    const name=p?`${p.name}${p.description?` <span style="color:var(--text-tertiary);font-size:11px">(${p.description})</span>`:''}${step>1?` <span style="color:var(--green-dark);font-size:11px">— multiples of ${step}</span>`:''}`:`#${id}`;
+    const name=p?`${p.name}${p.description?` <span style="color:var(--text-tertiary);font-size:11px">${wrapDesc(p.description)}</span>`:''}${step>1?` <span style="color:var(--green-dark);font-size:11px">— multiples of ${step}</span>`:''}`:`#${id}`;
     return `<div class="cart-item">
       <span class="cart-item-name">${name}</span>
       <div class="qty-ctrl">
@@ -1869,7 +1869,7 @@ async function submitOrder(){
     // Build order summary for review
     const itemList=Object.entries(cart).map(([id,q])=>{
       const p=allProducts.find(x=>x.id==id);
-      return `• ${p?p.name:'#'+id}${p&&p.description?' ('+p.description+')':''}: ${q}`;
+      return `• ${p?p.name:'#'+id}${fmtDesc(p&&p.description)}: ${q}`;
     }).join('\n');
     const productCount=Object.keys(cart).length;
     const confirmed=confirm(
@@ -2211,7 +2211,7 @@ function renderOrdersList(){
     const itemRows=Object.entries(o.items).map(([id,q])=>{
       const p=allProducts.find(x=>x.id==id);
       return `<div class="order-item-row">
-        <span>${p?p.name:'#'+id}${p&&p.description?' ('+p.description+')':''}</span>
+        <span>${p?p.name:'#'+id}${fmtDesc(p&&p.description)}</span>
         <div style="display:flex;align-items:center;gap:6px">
           <input class="admin-qty-input" type="number" value="${q}" min="0" max="999"
             onchange="updateOrderItem('${o.id}',${id},this.value)" title="Edit quantity"/>
@@ -2230,7 +2230,7 @@ function renderOrdersList(){
     const addItemHtml=`<div class="add-item-row">
       <select id="add-prod-${o.id}" class="add-item-select">
         <option value="">+ Add product to this order...</option>
-        ${allProducts.map(p=>`<option value="${p.id}">${p.name}${p.description?' ('+p.description+')':''}</option>`).join('')}
+        ${allProducts.map(p=>`<option value="${p.id}">${p.name}${fmtDesc(p.description)}</option>`).join('')}
       </select>
       <input type="number" id="add-qty-${o.id}" class="admin-qty-input" placeholder="qty" min="1" max="999" value="1"/>
       <button class="btn-sm green" onclick="addItemToOrder('${o.id}')">Add</button>
@@ -2469,7 +2469,7 @@ function renderIPList(){
     const itemRows=Object.entries(o.items).map(([id,q])=>{
       const p=allProducts.find(x=>x.id==id);
       return `<div class="order-item-row">
-        <span>${p?p.name:'#'+id}${p&&p.description?' ('+p.description+')':''}</span>
+        <span>${p?p.name:'#'+id}${fmtDesc(p&&p.description)}</span>
         <div class="qty-controls">
           <input class="admin-qty-input" type="number" value="${q}" min="0" max="999"
             onchange="updateIPItem('${o.id}',${id},this.value)"
@@ -2482,7 +2482,7 @@ function renderIPList(){
     const addItemHtml=`<div class="add-item-row">
       <select id="ip-add-prod-${o.id}" class="add-item-select">
         <option value="">+ Add product to this order...</option>
-        ${allProducts.map(p=>`<option value="${p.id}">${p.name}${p.description?' ('+p.description+')':''}</option>`).join('')}
+        ${allProducts.map(p=>`<option value="${p.id}">${p.name}${fmtDesc(p.description)}</option>`).join('')}
       </select>
       <input type="number" id="ip-add-qty-${o.id}" class="admin-qty-input" placeholder="qty" min="1" max="999" value="1"/>
       <button class="btn-sm green" onclick="addIPItem('${o.id}')">Add</button>
@@ -2808,7 +2808,7 @@ function renderDeliveryEditor(order){
       return `<div style="border:1px solid #FECACA;border-radius:var(--radius);padding:10px 12px;margin-bottom:8px;background:#FFF5F5;">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
           <span style="font-size:18px;">${img}</span>
-          <span style="font-weight:600;font-size:13px;flex:1;color:#991B1B;">${p.name.toUpperCase()}${p.description?` <span style="font-weight:400;color:#EF4444;font-size:11px;">(${p.description})</span>`:''}</span>
+          <span style="font-weight:600;font-size:13px;flex:1;color:#991B1B;">${p.name.toUpperCase()}${p.description?` <span style="font-weight:400;color:#EF4444;font-size:11px;">${wrapDesc(p.description)}</span>`:''}</span>
           <div style="display:flex;align-items:center;gap:6px;">
             <span style="font-size:11px;color:#9CA3AF;text-decoration:line-through;">×${item.origQty}</span>
             <span style="font-size:13px;font-weight:700;color:#DC2626;">→ ×${item.qty}</span>
@@ -2824,7 +2824,7 @@ function renderDeliveryEditor(order){
     } else {
       return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border-light);">
         <span style="font-size:16px;">${img}</span>
-        <span style="font-size:13px;flex:1;color:var(--text-secondary);">${p.name}${p.description?` (${p.description})`:''}</span>
+        <span style="font-size:13px;flex:1;color:var(--text-secondary);">${p.name}${p.description?` ${wrapDesc(p.description)}`:''}</span>
         <div style="display:flex;align-items:center;gap:6px;">
           <span style="font-size:13px;color:var(--text-secondary);">×${item.qty}</span>
           <input type="number" value="${item.qty}" min="0" max="999"
@@ -2866,9 +2866,9 @@ function renderDeliveryEditor(order){
           />
           <div id="delivery-prod-results" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:4px;max-height:200px;overflow-y:auto;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,.1);">
             ${allProducts.map(p=>`
-              <div class="notif-item" onclick="selectDeliveryProduct('${p.id}','${(p.name+(p.description?' ('+p.description+')':'')).replace(/'/g,'&#39;')}')"
+              <div class="notif-item" onclick="selectDeliveryProduct('${p.id}','${(p.name+(fmtDesc(p.description))).replace(/'/g,'&#39;')}')"
                 style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border-light);">
-                ${p.name}${p.description?` <span style="color:var(--text-tertiary);font-size:11px;">(${p.description})</span>`:''}
+                ${p.name}${p.description?` <span style="color:var(--text-tertiary);font-size:11px;">${wrapDesc(p.description)}</span>`:''}
                 <span style="float:right;font-size:10px;color:var(--text-tertiary);text-transform:uppercase;">${p.cat}</span>
               </div>`).join('')}
           </div>
@@ -2897,10 +2897,10 @@ function filterDeliveryProducts(query){
     results.innerHTML='<div style="padding:10px 12px;font-size:13px;color:var(--text-tertiary);">No products found.</div>';
   } else {
     results.innerHTML=items.map(p=>`
-      <div onclick="selectDeliveryProduct('${p.id}','${(p.name+(p.description?' ('+p.description+')':'')).replace(/'/g,'&#39;').replace(/"/g,'&quot;')}')"
+      <div onclick="selectDeliveryProduct('${p.id}','${(p.name+(fmtDesc(p.description))).replace(/'/g,'&#39;').replace(/"/g,'&quot;')}')"
         style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border-light);"
         onmouseover="this.style.background='var(--green-light)'" onmouseout="this.style.background=''">
-        ${p.name}${p.description?` <span style="color:var(--text-tertiary);font-size:11px;">(${p.description})</span>`:''}
+        ${p.name}${p.description?` <span style="color:var(--text-tertiary);font-size:11px;">${wrapDesc(p.description)}</span>`:''}
         <span style="float:right;font-size:10px;color:var(--text-tertiary);text-transform:uppercase;">${p.cat}</span>
       </div>`).join('');
   }
@@ -3106,7 +3106,7 @@ function printDeliveryPDFMulti(orders){
           const col=r.removed?'#DC2626':'#444';
           return `<tr><td colspan="2" style="padding:4px 6px;background:${bg};font-size:10px;font-weight:700;letter-spacing:.5px;color:${col};">${r.label}</td></tr>`;
         }
-        const name=`${r.p.name}${r.p.description?` <span style="color:#999;font-size:9px;">(${r.p.description})</span>`:''}`;
+        const name=`${r.p.name}${r.p.description?` <span style="color:#999;font-size:9px;">${wrapDesc(r.p.description)}</span>`:''}`;
         const isZeroed=r.isZeroed||r.removed;
         const qtyStyle=`font-weight:700;text-align:center;${r.altered&&!isZeroed?'color:#F59E0B;':isZeroed?'color:#DC2626;':'' }`;
         const nameStyle=isZeroed?'text-decoration:line-through;color:#DC2626;':'';
@@ -3218,7 +3218,7 @@ async function printDeliveryPDF(){
       const altered=item.qty!==item.origQty;
       const note=altered?(item.note||`Changed from ${item.origQty} to ${item.qty}`):'';
       itemSections+=`<tr>
-        <td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:13px;">${p.name}${p.description?' <span style="color:#888;font-size:11px;">('+p.description+')</span>':''}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:13px;">${p.name}${p.description?' <span style="color:#888;font-size:11px;">'+wrapDesc(p.description)+'</span>':''}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:13px;text-align:center;font-weight:700;${altered?'color:#F59E0B;':''}">${item.qty}</td>
         <td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:12px;color:#666;font-style:italic;">${note}</td>
       </tr>`;
@@ -3340,7 +3340,7 @@ async function loadCompleteOrders(){
       const itemRows=Object.entries(o.items||{}).map(([id,q])=>{
         const p=allProducts.find(x=>x.id==id);
         return `<div class="order-item-row">
-          <span>${p?p.name:'#'+id}${p&&p.description?' ('+p.description+')':''}</span>
+          <span>${p?p.name:'#'+id}${fmtDesc(p&&p.description)}</span>
           <div class="qty-controls">
             <input class="admin-qty-input" type="number" value="${q}" min="0" max="999"
               onchange="updateCompleteItem('${o.id}',${id},this.value)"
@@ -3353,7 +3353,7 @@ async function loadCompleteOrders(){
       const addItemHtml=`<div class="add-item-row">
         <select id="zc-add-prod-${o.id}" class="add-item-select">
           <option value="">+ Add product to this order...</option>
-          ${allProducts.map(p=>`<option value="${p.id}">${p.name}${p.description?' ('+p.description+')':''}</option>`).join('')}
+          ${allProducts.map(p=>`<option value="${p.id}">${p.name}${fmtDesc(p.description)}</option>`).join('')}
         </select>
         <input type="number" id="zc-add-qty-${o.id}" class="admin-qty-input" placeholder="qty" min="1" max="999" value="1"/>
         <button class="btn-sm green" onclick="addCompleteItem('${o.id}')">Add</button>
@@ -3687,6 +3687,19 @@ function displayNameFor(username){
   return usersDisplayNameMap[username]||username;
 }
 
+// Wraps a product description in parentheses for display next to its name —
+// UNLESS the description already contains its own parentheses (e.g. "Box (24)"),
+// in which case wrapping it again would show "Box ((24))"-style doubled parens.
+function wrapDesc(d){
+  if(!d)return '';
+  return /[()]/.test(d)?d:'('+d+')';
+}
+// Same as wrapDesc, but includes the leading space so it can replace the common
+// `x?' ('+x+')':''` ternary pattern used throughout the app.
+function fmtDesc(d){
+  return d?' '+wrapDesc(d):'';
+}
+
 async function moveUser(username, direction){
   const idx=allUsersCache.findIndex(u=>u.username===username);
   if(idx===-1)return;
@@ -3828,7 +3841,7 @@ function openEditUser(username,authUserId){
           const checked=userProds.length===0||userProdSet.has(String(p.id));
           return `<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:5px 8px;border:1px solid ${checked?'var(--green)':'var(--border)'};border-radius:var(--radius-sm);background:${checked?'var(--green-light)':'var(--bg)'};" id="prod-label-${p.id}">
             <input type="checkbox" id="uprod-${p.id}" ${checked?'checked':''} onchange="updateProdLabel(${p.id},this.checked)" style="width:13px;height:13px;accent-color:var(--green);flex-shrink:0;"/>
-            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}${p.description?` <span style="color:var(--text-tertiary);font-size:10px;">(${p.description})</span>`:''}</span>
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}${p.description?` <span style="color:var(--text-tertiary);font-size:10px;">${wrapDesc(p.description)}</span>`:''}</span>
           </label>`;
         }).join('')}
         </div>
@@ -4492,7 +4505,7 @@ function renderOrdersPDF(orders,sectionLabel){
 
     const itemRows=items.map(([id,q])=>{
       const p=allProducts.find(x=>String(x.id)===String(id));
-      const name=p?p.name+(p.description?' ('+p.description+')':''):'Product #'+id;
+      const name=p?p.name+(fmtDesc(p.description)):'Product #'+id;
       const note=notes[id]&&notes[id].note?notes[id].note:'';
       return `<tr>
         <td style="padding:8px 12px;border-bottom:1px solid #ddd;font-size:13px;">${name}${note?`<div style="font-size:11px;color:#444;margin-top:2px;">📝 ${note}</div>`:''}</td>
@@ -4585,7 +4598,7 @@ function generateOrderPDF(order,opts={}){
 
   const itemRows=items.map(([id,q])=>{
     const p=allProducts.find(x=>String(x.id)===String(id));
-    const name=p?p.name+(p.description?' ('+p.description+')':''):'Product #'+id;
+    const name=p?p.name+(fmtDesc(p.description)):'Product #'+id;
     const origQty=original?parseInt(original[id]||0):null;
     const changed=origQty!==null&&origQty!==parseInt(q);
     const note=deliveryNotes[id]||'';
@@ -4607,7 +4620,7 @@ function generateOrderPDF(order,opts={}){
     Object.entries(original).forEach(([id,origQ])=>{
       if(!order.items[id]&&parseInt(origQ)>0){
         const p=allProducts.find(x=>String(x.id)===String(id));
-        const name=p?p.name+(p.description?' ('+p.description+')':''):'Product #'+id;
+        const name=p?p.name+(fmtDesc(p.description)):'Product #'+id;
         const note=deliveryNotes[id]||'';
         removedRows+=`<tr>
           <td style="padding:8px 10px;border-bottom:1px solid #eee;font-size:13px;">
@@ -4979,7 +4992,7 @@ function renderProductionList(){
         const checked=!!p.production_tracked;
         return `<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:5px 8px;border:1px solid ${checked?'var(--green)':'var(--border)'};border-radius:var(--radius-sm);background:${checked?'var(--green-light)':'var(--bg)'};" id="prodtrack-label-${p.id}">
           <input type="checkbox" id="prodtrack-${p.id}" ${checked?'checked':''} onchange="updateProductionLabel(${p.id},this.checked)" style="width:13px;height:13px;accent-color:var(--green);flex-shrink:0;"/>
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}${p.description?` <span style="color:var(--text-tertiary);font-size:10px;">(${p.description})</span>`:''}</span>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.name}${p.description?` <span style="color:var(--text-tertiary);font-size:10px;">${wrapDesc(p.description)}</span>`:''}</span>
         </label>`;
       }).join('')}
       </div>
