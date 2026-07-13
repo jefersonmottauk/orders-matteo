@@ -856,6 +856,7 @@ union all select 'app_settings', to_jsonb(t) from app_settings t;</div>
     </div>
     <div class="field"><label>Name</label><input type="text" id="prod-name" placeholder="Product name"/></div>
     <div class="field"><label>Description / Unit</label><input type="text" id="prod-description" placeholder="e.g. 1 kg, Unit, Box..."/></div>
+    <div class="field"><label>Order in multiples of <span style="font-weight:400;color:var(--text-tertiary);font-size:11px;">(e.g. 12 = clients can only order 12, 24, 36...)</span></label><input type="number" id="prod-order-multiple" min="1" max="999" value="1" placeholder="1"/></div>
     <div class="field"><label>Category</label>
       <select id="prod-cat">
         <!-- populated dynamically by updateProdCatDropdown() -->
@@ -1689,6 +1690,7 @@ function productCardHtml(p,locked){
     <div class="emoji">${p.image_url?`<img src="${p.image_url}" style="width:56px;height:56px;object-fit:cover;border-radius:6px;display:block;margin:0 auto;" onerror="this.style.display='none';this.nextSibling.style.display='block'"/><span style="display:none">${p.emoji}</span>`:''}</div>
     <div class="name">${p.name}</div>
     ${p.description?`<div class="pdesc">${p.description}</div>`:''}
+    ${(p.order_multiple&&p.order_multiple>1)?`<div class="pdesc" style="color:var(--green-dark);font-weight:500;">Multiples of ${p.order_multiple}</div>`:''}
     <div class="footer">
       ${locked?`<button class="add-btn locked" disabled>🔒 Closed</button>`
       :(!isAdmin&&p.out_of_stock)?`<button class="add-btn locked" disabled style="background:#FEE2E2;color:#991B1B;border:1px solid #FECACA;">🚫 Out of stock</button>`
@@ -1707,8 +1709,10 @@ function productCardHtml(p,locked){
 function stepQty(id, delta){
   const inp=document.getElementById('qty-'+id);
   if(!inp)return;
+  const p=allProducts.find(x=>x.id==id);
+  const step=(p&&p.order_multiple>1)?p.order_multiple:1;
   const current=parseInt(inp.value)||0;
-  const next=Math.max(0, Math.min(999, current+delta));
+  const next=Math.max(0, Math.min(999, current+(delta*step)));
   inp.value=next||'';
   if(next<=0){delete cart[id];}
   else{cart[id]=next;}
@@ -1717,10 +1721,16 @@ function stepQty(id, delta){
 function syncQtyDisplay(id){
   const inp=document.getElementById('qty-'+id);
   if(!inp)return;
-  const v=parseInt(inp.value)||0;
-  const clamped=Math.max(0,Math.min(999,v));
-  if(clamped<=0){inp.value='';delete cart[id];}
-  else{inp.value=clamped;cart[id]=clamped;}
+  const p=allProducts.find(x=>x.id==id);
+  const step=(p&&p.order_multiple>1)?p.order_multiple:1;
+  let v=parseInt(inp.value)||0;
+  v=Math.max(0,Math.min(999,v));
+  if(step>1&&v>0){
+    v=Math.round(v/step)*step;
+    if(v<step)v=step; // minimum order is one full multiple, never a partial one
+  }
+  if(v<=0){inp.value='';delete cart[id];}
+  else{inp.value=v;cart[id]=v;}
   renderCart();
 }
 function addToCart(id){
@@ -1733,7 +1743,15 @@ function addToCart(id){
   renderCart();
   document.getElementById('order-success').style.display='none';
 }
-function setCartQty(id,val){const q=parseInt(val)||0;if(q<=0)delete cart[id];else cart[id]=q;renderCart();}
+function setCartQty(id,val){
+  const p=allProducts.find(x=>x.id==id);
+  const step=(p&&p.order_multiple>1)?p.order_multiple:1;
+  let q=parseInt(val)||0;
+  q=Math.max(0,Math.min(999,q));
+  if(step>1&&q>0){q=Math.round(q/step)*step;if(q<step)q=step;}
+  if(q<=0)delete cart[id];else cart[id]=q;
+  renderCart();
+}
 function removeFromCart(id){delete cart[id];renderCart();}
 function showCartTab(){
   ['tab-order','tab-history','tab-cart'].forEach(t=>{
@@ -1770,13 +1788,14 @@ function renderCart(){
   }
   el.innerHTML=Object.entries(cart).map(([id,q])=>{
     const p=allProducts.find(x=>x.id==id);
-    const name=p?`${p.name}${p.description?` <span style="color:var(--text-tertiary);font-size:11px">(${p.description})</span>`:''}`:`#${id}`;
+    const step=(p&&p.order_multiple>1)?p.order_multiple:1;
+    const name=p?`${p.name}${p.description?` <span style="color:var(--text-tertiary);font-size:11px">(${p.description})</span>`:''}${step>1?` <span style="color:var(--green-dark);font-size:11px">— multiples of ${step}</span>`:''}`:`#${id}`;
     return `<div class="cart-item">
       <span class="cart-item-name">${name}</span>
       <div class="qty-ctrl">
-        <button class="qty-btn" onclick="setCartQty(${id},${q-1})">−</button>
+        <button class="qty-btn" onclick="setCartQty(${id},${Math.max(0,q-step)})">−</button>
         <input class="cart-qty-input" type="number" value="${q}" min="1" max="999" onchange="setCartQty(${id},this.value)"/>
-        <button class="qty-btn" onclick="setCartQty(${id},${q+1})">+</button>
+        <button class="qty-btn" onclick="setCartQty(${id},${q+step})">+</button>
         <button class="qty-btn" style="color:var(--red)" onclick="removeFromCart(${id})">✕</button>
       </div>
     </div>`;
@@ -5043,6 +5062,7 @@ function openAddProduct(){
   document.getElementById('product-modal-title').textContent='Add product';
   document.getElementById('prod-name').value='';
   document.getElementById('prod-description').value='';
+  document.getElementById('prod-order-multiple').value='1';
   document.getElementById('prod-cat').value='sauces';
   document.getElementById('add-product-error').style.display='none';
   document.getElementById('prod-image-preview').style.display='none';
@@ -5057,6 +5077,7 @@ async function openEditProduct(id){
     document.getElementById('product-modal-title').textContent='Edit product';
     document.getElementById('prod-name').value=p.name;
     document.getElementById('prod-description').value=p.description||'';
+    document.getElementById('prod-order-multiple').value=p.order_multiple||1;
     document.getElementById('prod-cat').value=p.cat;
     document.getElementById('add-product-error').style.display='none';
     document.getElementById('prod-image-file').value='';
@@ -5073,6 +5094,7 @@ async function openEditProduct(id){
 async function saveProduct(){
   const name=document.getElementById('prod-name').value.trim();
   const description=document.getElementById('prod-description').value.trim();
+  const order_multiple=Math.max(1,Math.min(999,parseInt(document.getElementById('prod-order-multiple').value)||1));
   const cat=document.getElementById('prod-cat').value;
   const err=document.getElementById('add-product-error');
   if(!name){err.textContent='Name is required.';err.style.display='block';return;}
@@ -5094,7 +5116,7 @@ async function saveProduct(){
   }
 
   try{
-    const payload={name,description,cat,image_url};
+    const payload={name,description,cat,image_url,order_multiple};
     let savedId=editingProductId;
     if(editingProductId){
       await sbPatch('products',`id=eq.${editingProductId}`,payload);
