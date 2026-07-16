@@ -1329,15 +1329,21 @@ async function launch(){
     await checkUnreadNotifications();
     setInterval(checkUnreadNotifications, 30000); // poll every 30s for new messages
     // "Online now" heartbeat — lets the admin see which clients currently have the
-    // app open. Sends an initial ping right away, then every 45s while the tab stays open.
+    // app open. Sends an initial ping right away, then every 20s while the tab stays open.
     sendOnlineHeartbeat();
-    setInterval(sendOnlineHeartbeat, 45000);
+    setInterval(sendOnlineHeartbeat, 20000);
   }
   updateBanner();
 }
 function sendOnlineHeartbeat(){
   if(!currentUser||isAdmin)return;
-  sbPatch('users',`username=ilike.${encodeURIComponent(currentUser)}`,{last_seen:new Date().toISOString()}).catch(()=>{});
+  // Goes through a Netlify Function (service-role write) instead of patching the
+  // users table directly — a direct client-side PATCH was silently blocked, most
+  // likely by a Row Level Security policy on the users table.
+  fetch('/.netlify/functions/heartbeat',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({username:currentUser})
+  }).catch(()=>{});
 }
 
 // ── ADMIN NOTIFICATIONS (new pending orders) ──
@@ -2163,7 +2169,7 @@ function showAdminTab(t,el){
   if(t==='chat'){chatHideComposePage();chatLoadHistory();chatEnsureUsers();}
   // Keep "online now" dots fresh while the Users tab is open; stop polling elsewhere.
   if(_usersPollInterval){clearInterval(_usersPollInterval);_usersPollInterval=null;}
-  if(t==='users'){_usersPollInterval=setInterval(loadUsers,20000);}
+  if(t==='users'){_usersPollInterval=setInterval(loadUsers,10000);}
 }
 
 // ── ADMIN: ORDERS ──
@@ -3655,9 +3661,9 @@ async function loadUsers(){
     allUsersCache=rows.filter(u=>u.username!==ADMIN_USERNAME);
     refreshDisplayNameMap(rows);
     const nonAdmin=rows.filter(u=>u.username!==ADMIN_USERNAME);
-    // "Online now" = a heartbeat was received in the last 2 minutes (heartbeats fire every 45s,
-    // so a couple of missed beats still count before falling back to offline).
-    const ONLINE_WINDOW_MS=120000;
+    // "Online now" = a heartbeat was received in the last 60s (heartbeats fire every 20s,
+    // so a missed beat or two still counts before falling back to offline).
+    const ONLINE_WINDOW_MS=60000;
     const isOnline=u=>!!(u.last_seen&&(Date.now()-new Date(u.last_seen).getTime())<ONLINE_WINDOW_MS);
     const onlineCount=nonAdmin.filter(isOnline).length;
     const countEl=document.getElementById('users-online-count');
