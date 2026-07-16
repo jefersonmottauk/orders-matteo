@@ -465,7 +465,7 @@
 
     <!-- ADMIN: USERS -->
     <div id="tab-users" style="display:none;">
-      <div class="section-toolbar"><h2>Users</h2><button class="btn-sm green" onclick="openAddUser()">+ Add user</button></div>
+      <div class="section-toolbar"><h2>Users <span id="users-online-count" style="font-size:11px;font-weight:400;color:var(--text-secondary);"></span></h2><button class="btn-sm green" onclick="openAddUser()">+ Add user</button></div>
       <div class="user-table" id="user-table"></div>
 
     </div>
@@ -1328,8 +1328,16 @@ async function launch(){
     renderCats();renderProducts();renderCart();
     await checkUnreadNotifications();
     setInterval(checkUnreadNotifications, 30000); // poll every 30s for new messages
+    // "Online now" heartbeat — lets the admin see which clients currently have the
+    // app open. Sends an initial ping right away, then every 45s while the tab stays open.
+    sendOnlineHeartbeat();
+    setInterval(sendOnlineHeartbeat, 45000);
   }
   updateBanner();
+}
+function sendOnlineHeartbeat(){
+  if(!currentUser||isAdmin)return;
+  sbPatch('users',`username=ilike.${encodeURIComponent(currentUser)}`,{last_seen:new Date().toISOString()}).catch(()=>{});
 }
 
 // ── ADMIN NOTIFICATIONS (new pending orders) ──
@@ -2137,6 +2145,7 @@ function editOrderFromHistory(orderId){
 }
 
 // ── ADMIN TABS ──
+let _usersPollInterval=null;
 function showAdminTab(t,el){
   ['orders','completed','users','products','trash','chat','delivery','complete'].forEach(x=>{
     const d=document.getElementById('tab-'+x);
@@ -2152,6 +2161,9 @@ function showAdminTab(t,el){
   if(t==='products')loadAdminProducts();
   if(t==='trash'){loadTrash();loadTrashedUsers();}
   if(t==='chat'){chatHideComposePage();chatLoadHistory();chatEnsureUsers();}
+  // Keep "online now" dots fresh while the Users tab is open; stop polling elsewhere.
+  if(_usersPollInterval){clearInterval(_usersPollInterval);_usersPollInterval=null;}
+  if(t==='users'){_usersPollInterval=setInterval(loadUsers,20000);}
 }
 
 // ── ADMIN: ORDERS ──
@@ -3643,19 +3655,31 @@ async function loadUsers(){
     allUsersCache=rows.filter(u=>u.username!==ADMIN_USERNAME);
     refreshDisplayNameMap(rows);
     const nonAdmin=rows.filter(u=>u.username!==ADMIN_USERNAME);
+    // "Online now" = a heartbeat was received in the last 2 minutes (heartbeats fire every 45s,
+    // so a couple of missed beats still count before falling back to offline).
+    const ONLINE_WINDOW_MS=120000;
+    const isOnline=u=>!!(u.last_seen&&(Date.now()-new Date(u.last_seen).getTime())<ONLINE_WINDOW_MS);
+    const onlineCount=nonAdmin.filter(isOnline).length;
+    const countEl=document.getElementById('users-online-count');
+    if(countEl)countEl.textContent=onlineCount>0?`— 🟢 ${onlineCount} online now`:'';
     el.innerHTML=`<div class="user-row header"><span>Username</span><span>Password</span><span>Change PW</span><span>Remove</span></div>`+
-      nonAdmin.map((u,i)=>`<div class="user-row" data-user="${u.username}">
+      nonAdmin.map((u,i)=>{
+        const online=isOnline(u);
+        const dot=`<span title="${online?'Online now':'Offline'}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${online?'#22C55E':'#D1D5DB'};flex-shrink:0;"></span>`;
+        return `<div class="user-row" data-user="${u.username}">
         <span style="display:flex;align-items:center;gap:6px;">
           <div style="display:flex;flex-direction:column;gap:0;">
             <button onclick="moveUser('${u.username}',-1)" style="border:none;background:none;cursor:pointer;color:#9CA3AF;font-size:10px;padding:0 3px;line-height:1;opacity:.7;transition:opacity .15s;" title="Move up">⌃</button>
             <button onclick="moveUser('${u.username}',1)" style="border:none;background:none;cursor:pointer;color:#9CA3AF;font-size:10px;padding:0 3px;line-height:1;opacity:.7;transition:opacity .15s;" title="Move down">⌄</button>
           </div>
+          ${dot}
           ${u.username}${u.display_name?` <span style="color:var(--text-tertiary);font-size:11px;font-weight:400;">(${u.display_name})</span>`:''}
         </span>
         <span style="font-family:monospace">${u.password}</span>
         <button class="btn-sm" onclick="openEditUser('${u.username}','${u.auth_user_id||''}')">✏️ Edit</button>
         <button class="btn-danger" onclick="deleteUser('${u.username}','${u.auth_user_id||''}')">Remove</button>
-      </div>`).join('');
+      </div>`;
+      }).join('');
   }catch(e){el.innerHTML='<div style="padding:1rem;font-size:13px;color:var(--red)">Error loading users.</div>';}
 }
 
