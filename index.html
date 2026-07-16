@@ -273,6 +273,11 @@
         <button class="btn-sm notif-bell" onclick="toggleNotifDropdown()">🔔<span class="notif-badge" id="notif-badge" style="display:none;">0</span></button>
         <div class="notif-dropdown" id="notif-dropdown"></div>
       </div>
+      <!-- ONLINE CLIENTS -->
+      <div class="notif-bell-wrap" id="online-bell-wrap" style="display:none;">
+        <button class="btn-sm notif-bell" onclick="toggleOnlineDropdown()" title="Clients online now">👁 <span id="online-count">0</span></button>
+        <div class="notif-dropdown" id="online-dropdown"></div>
+      </div>
       <!-- ADMIN MENU -->
       <div class="notif-bell-wrap" id="admin-menu-wrap" style="display:none;">
         <button class="btn-sm" onclick="toggleAdminMenu()">⚙️ Menu</button>
@@ -1309,6 +1314,8 @@ async function launch(){
     sbGet('orders_history','status=eq.in_production&deleted_at=is.null').then(r=>{const b=document.getElementById('inproduction-badge');if(b&&r.length){b.style.display='inline';b.textContent=r.length;}}).catch(()=>{});
     sbGet('orders_history','status=eq.completed&deleted_at=is.null').then(r=>{const b=document.getElementById('delivery-badge');if(b&&r.length){b.style.display='inline';b.textContent=r.length;}}).catch(()=>{});
     setInterval(checkAdminPendingNotifications,30000);
+    checkOnlineClients();
+    setInterval(checkOnlineClients,15000); // keeps the 👁 count fresh on every admin tab, not just Users
   } else {
     // Load user's visible categories, products restriction AND cut-off override
     try{
@@ -1506,10 +1513,17 @@ function toggleNotifDropdown(){
   if(isAdmin){
     document.getElementById('notif-dropdown').classList.toggle('open');
     document.getElementById('admin-menu-dropdown')?.classList.remove('open');
+    document.getElementById('online-dropdown')?.classList.remove('open');
   } else {
     // Client: open dropdown with clear button + link to messages
     document.getElementById('notif-dropdown').classList.toggle('open');
   }
+}
+function toggleOnlineDropdown(){
+  document.getElementById('online-dropdown').classList.toggle('open');
+  document.getElementById('notif-dropdown')?.classList.remove('open');
+  document.getElementById('admin-menu-dropdown')?.classList.remove('open');
+  checkOnlineClients(); // refresh right when opened
 }
 function goHome(){
   if(isAdmin){
@@ -1521,6 +1535,7 @@ function goHome(){
 function toggleAdminMenu(){
   document.getElementById('admin-menu-dropdown').classList.toggle('open');
   document.getElementById('notif-dropdown')?.classList.remove('open');
+  document.getElementById('online-dropdown')?.classList.remove('open');
 }
 function goAdminMenu(tab){
   document.getElementById('admin-menu-dropdown').classList.remove('open');
@@ -3663,14 +3678,12 @@ async function loadUsers(){
     const nonAdmin=rows.filter(u=>u.username!==ADMIN_USERNAME);
     // "Online now" = a heartbeat was received in the last 60s (heartbeats fire every 20s,
     // so a missed beat or two still counts before falling back to offline).
-    const ONLINE_WINDOW_MS=60000;
-    const isOnline=u=>!!(u.last_seen&&(Date.now()-new Date(u.last_seen).getTime())<ONLINE_WINDOW_MS);
-    const onlineCount=nonAdmin.filter(isOnline).length;
+    const onlineCount=nonAdmin.filter(isUserOnline).length;
     const countEl=document.getElementById('users-online-count');
     if(countEl)countEl.textContent=onlineCount>0?`— 🟢 ${onlineCount} online now`:'';
     el.innerHTML=`<div class="user-row header"><span>Username</span><span>Password</span><span>Change PW</span><span>Remove</span></div>`+
       nonAdmin.map((u,i)=>{
-        const online=isOnline(u);
+        const online=isUserOnline(u);
         const dot=`<span title="${online?'Online now':'Offline'}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${online?'#22C55E':'#D1D5DB'};flex-shrink:0;"></span>`;
         return `<div class="user-row" data-user="${u.username}">
         <span style="display:flex;align-items:center;gap:6px;">
@@ -3712,6 +3725,35 @@ function displayNameFor(username){
 // Products catalogue (Sauces, Oven, Desserts, ... Backup) instead of the raw
 // alphabetical-by-category order the database query returns. Products keep
 // their existing relative order within each category (stable sort).
+// "Online now" = a heartbeat (see sendOnlineHeartbeat) was received in the last 60s.
+// Heartbeats fire every 20s, so a missed beat or two still counts before falling offline.
+const ONLINE_WINDOW_MS=60000;
+function isUserOnline(u){
+  return !!(u&&u.last_seen&&(Date.now()-new Date(u.last_seen).getTime())<ONLINE_WINDOW_MS);
+}
+// Polls who's online and updates the 👁 button in the topbar (visible on every admin
+// tab, not just Users) — separate from loadUsers() so the count stays fresh everywhere.
+async function checkOnlineClients(){
+  if(!isAdmin)return;
+  document.getElementById('online-bell-wrap').style.display='inline-block';
+  try{
+    const rows=await sbGet('users','deleted_at=is.null&order=sort_order.asc,created_at.asc');
+    const nonAdmin=rows.filter(u=>u.username!==ADMIN_USERNAME);
+    const online=nonAdmin.filter(isUserOnline);
+    const countEl=document.getElementById('online-count');
+    if(countEl)countEl.textContent=online.length;
+    const dd=document.getElementById('online-dropdown');
+    if(!dd)return;
+    if(!online.length){
+      dd.innerHTML=`<div class="notif-dropdown-header">Online now</div><div class="notif-empty">No clients online.</div>`;
+    } else {
+      dd.innerHTML=`<div class="notif-dropdown-header">Online now (${online.length})</div>`+
+        online.map(u=>`<div class="notif-item" style="cursor:default;">
+          <div class="notif-item-title">🟢 ${u.username}${u.display_name?` <span style="color:var(--text-tertiary);font-weight:400;">(${u.display_name})</span>`:''}</div>
+        </div>`).join('');
+    }
+  }catch(e){/* keep last known count on error, don't blank the button */}
+}
 function productsInCatalogOrder(){
   const catOrder=['sauces','oven','desserts','small-packs','cheeses','cured-meat','vegg','frozen','dry','pastas','drinks','oils','packaging','chemical','office','backup'];
   const rank=c=>{const i=catOrder.indexOf(c);return i===-1?catOrder.length:i;};
